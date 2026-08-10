@@ -1,0 +1,18 @@
+# Python / backend
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+
+# Xcode
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+ios/DerivedData/
+ios/build/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# Secrets — never commit API keys
+ios/**/Secrets.xcconfig
+.env

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: classmusic-resolve
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: BACKEND_API_KEY
+        sync: false
+      - key: RESOLVE_CACHE_TTL
+        value: "14400"
