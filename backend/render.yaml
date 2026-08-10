@@ -3,6 +3,7 @@ services:
     name: classmusic-resolve
     runtime: docker
     plan: free
+    rootDir: backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
