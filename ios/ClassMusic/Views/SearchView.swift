@@ -53,6 +53,14 @@ struct SearchView: View {
                 AddToPlaylistSheet(song: SongRepository.upsert(from: result, context: modelContext))
             }
             #if DEBUG
+            .task {
+                // Driven by SIMCTL_CHILD_UITEST_SEARCH=<query> — exercises
+                // the real YouTubeSearchClient path (not just the known-good
+                // test track) to verify the production API key end-to-end.
+                guard let query = ProcessInfo.processInfo.environment["UITEST_SEARCH"], !query.isEmpty else { return }
+                viewModel.query = query
+                viewModel.queryChanged()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Test Playback") {
