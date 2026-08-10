@@ -15,13 +15,17 @@ final class PlaybackManager {
     private(set) var isBuffering = false
     private(set) var loadError: String?
 
-    /// Fired when the current item plays to the end. Queue advance logic
-    /// (stage 4) hooks in here instead of PlaybackManager knowing about
-    /// PlaybackQueue directly.
+    /// Fired when the current item plays to the end, or when the lock
+    /// screen/Control Center/CarPlay next-previous buttons are used. Queue
+    /// advance logic (stage 4) hooks in here instead of PlaybackManager
+    /// knowing about PlaybackQueue directly.
     var onTrackFinished: (() -> Void)?
+    var onSkipNext: (() -> Void)?
+    var onSkipPrevious: (() -> Void)?
 
     private let player = AVPlayer()
     private let resolveClient: ResolveClient
+    private let nowPlaying = NowPlayingCoordinator()
     // deinit is always nonisolated, even on a @MainActor class, so cleanup
     // there can't touch MainActor-isolated storage — these two are the only
     // state deinit needs, and PlaybackManager's single-threaded lifecycle
@@ -33,6 +37,45 @@ final class PlaybackManager {
         self.resolveClient = resolveClient
         configureAudioSession()
         observeTime()
+        configureRemoteCommands()
+        observeInterruptions()
+    }
+
+    /// Without this, a phone call silences AVPlayer but PlaybackManager
+    /// still thinks it's playing — the lock screen shows a pause button
+    /// that does nothing useful and Control Center's state is just wrong.
+    private func observeInterruptions() {
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let info = notification.userInfo,
+                  let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue)
+            else { return }
+
+            switch type {
+            case .began:
+                self.pause()
+            case .ended:
+                let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+                if AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume) {
+                    self.resume()
+                }
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func configureRemoteCommands() {
+        nowPlaying.onPlay = { [weak self] in self?.resume() }
+        nowPlaying.onPause = { [weak self] in self?.pause() }
+        nowPlaying.onNextTrack = { [weak self] in self?.onSkipNext?() }
+        nowPlaying.onPreviousTrack = { [weak self] in self?.onSkipPrevious?() }
+        nowPlaying.onSeek = { [weak self] time in self?.seek(to: time) }
     }
 
     deinit {
@@ -52,11 +95,16 @@ final class PlaybackManager {
 
     private func observeTime() {
         let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        // queue: .main guarantees this fires on the main queue, so
+        // assumeIsolated is safe — Swift just can't infer that statically
+        // from a plain (CMTime) -> Void closure type.
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self else { return }
-            self.currentTime = time.seconds.isFinite ? time.seconds : 0
-            if let itemDuration = self.player.currentItem?.duration.seconds, itemDuration.isFinite {
-                self.duration = itemDuration
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.currentTime = time.seconds.isFinite ? time.seconds : 0
+                if let itemDuration = self.player.currentItem?.duration.seconds, itemDuration.isFinite {
+                    self.duration = itemDuration
+                }
             }
         }
     }
@@ -82,6 +130,7 @@ final class PlaybackManager {
             player.replaceCurrentItem(with: item)
             player.play()
             isPlaying = true
+            nowPlaying.update(song: song, duration: duration, elapsed: 0, rate: 1)
             logger.info("playing \(song.id), player.rate=\(self.player.rate)")
         } catch {
             logger.error("resolve/play failed for \(song.id): \(error.localizedDescription)")
@@ -99,20 +148,24 @@ final class PlaybackManager {
             object: item,
             queue: .main
         ) { [weak self] _ in
-            self?.isPlaying = false
-            self?.onTrackFinished?()
+            MainActor.assumeIsolated {
+                self?.isPlaying = false
+                self?.onTrackFinished?()
+            }
         }
     }
 
     func pause() {
         player.pause()
         isPlaying = false
+        nowPlaying.update(song: currentSong, duration: duration, elapsed: currentTime, rate: 0)
     }
 
     func resume() {
         guard currentSong != nil else { return }
         player.play()
         isPlaying = true
+        nowPlaying.update(song: currentSong, duration: duration, elapsed: currentTime, rate: 1)
     }
 
     func togglePlayPause() {
@@ -120,6 +173,15 @@ final class PlaybackManager {
     }
 
     func seek(to time: TimeInterval) {
-        player.seek(to: CMTime(seconds: time, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
+        // AVPlayer explicitly does not guarantee this completion runs on
+        // any particular queue, so hop back to the main actor properly
+        // rather than assuming (unlike the two observers above, which do
+        // specify queue: .main).
+        player.seek(to: CMTime(seconds: time, preferredTimescale: CMTimeScale(NSEC_PER_SEC))) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.nowPlaying.update(song: self.currentSong, duration: self.duration, elapsed: time, rate: self.isPlaying ? 1 : 0)
+            }
+        }
     }
 }
