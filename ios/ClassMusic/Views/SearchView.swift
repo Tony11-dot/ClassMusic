@@ -1,8 +1,12 @@
+import SwiftData
 import SwiftUI
 
 struct SearchView: View {
     @Environment(PlaybackManager.self) private var playback
+    @Environment(QueueStore.self) private var queueStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel = SearchViewModel()
+    @State private var playlistSheetResult: YouTubeSearchResult?
 
     var body: some View {
         NavigationStack {
@@ -13,19 +17,23 @@ struct SearchView: View {
                 }
                 ForEach(viewModel.results) { result in
                     Button {
-                        Task {
-                            let song = Song(
-                                id: result.id,
-                                title: result.title,
-                                artist: result.artist,
-                                thumbnailURL: result.thumbnailURL
-                            )
-                            await playback.play(song: song)
-                        }
+                        Task { await playback.play(song: SongRepository.upsert(from: result, context: modelContext)) }
                     } label: {
                         SearchResultRow(result: result)
                     }
                     .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button("Queue", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                            queueStore.enqueue(SongRepository.upsert(from: result, context: modelContext))
+                        }
+                        .tint(.blue)
+                    }
+                    .swipeActions(edge: .leading) {
+                        Button("Playlist", systemImage: "plus") {
+                            playlistSheetResult = result
+                        }
+                        .tint(.indigo)
+                    }
                 }
             }
             .listStyle(.plain)
@@ -41,6 +49,9 @@ struct SearchView: View {
             .onChange(of: viewModel.query) { _, _ in
                 viewModel.queryChanged()
             }
+            .sheet(item: $playlistSheetResult) { result in
+                AddToPlaylistSheet(song: SongRepository.upsert(from: result, context: modelContext))
+            }
             #if DEBUG
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -49,7 +60,8 @@ struct SearchView: View {
                             let song = Song(
                                 id: "dQw4w9WgXcQ",
                                 title: "Never Gonna Give You Up",
-                                artist: "Rick Astley"
+                                artist: "Rick Astley",
+                                thumbnailURL: URL(string: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
                             )
                             await playback.play(song: song)
                         }

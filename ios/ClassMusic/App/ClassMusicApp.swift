@@ -5,6 +5,7 @@ import SwiftUI
 struct ClassMusicApp: App {
     let modelContainer: ModelContainer
     @State private var playbackManager = PlaybackManager()
+    @State private var queueStore: QueueStore
 
     init() {
         let schema = Schema([
@@ -26,12 +27,14 @@ struct ClassMusicApp: App {
         } catch {
             fatalError("Failed to create SwiftData ModelContainer: \(error)")
         }
+        _queueStore = State(initialValue: QueueStore(context: modelContainer.mainContext))
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(playbackManager)
+                .environment(queueStore)
         }
         .modelContainer(modelContainer)
     }

@@ -100,7 +100,13 @@ final class NowPlayingCoordinator {
                   let image = UIImage(data: data)
             else { return }
             guard let self, !Task.isCancelled else { return }
-            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            // MediaPlayer calls this requestHandler from an arbitrary
+            // background queue when it serializes Now Playing info for
+            // Control Center/the lock screen. Without @Sendable here, Swift
+            // infers MainActor isolation (this closure is written inside a
+            // @MainActor class) and inserts a runtime check that crashes
+            // the moment MediaPlayer calls it off the main thread.
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in image }
             self.artworkCache[songId] = artwork
             logger.info("artwork loaded for \(songId): \(image.size.width)x\(image.size.height)")
             // Re-apply so the lock screen picks up the artwork that just
