@@ -32,7 +32,17 @@ struct YouTubeSearchClient {
             URLQueryItem(name: "key", value: apiKey),
         ]
 
-        let (data, response) = try await session.data(from: components.url!)
+        var request = URLRequest(url: components.url!)
+        // Google's iOS app key restriction checks this header, but iOS
+        // doesn't attach it automatically the way the docs' phrasing implies
+        // — it's on the calling code to set it on every request, same as
+        // e.g. Firebase's SDKs do internally. Without it every request gets
+        // API_KEY_IOS_APP_BLOCKED regardless of how the key is configured.
+        if let bundleId = Bundle.main.bundleIdentifier {
+            request.setValue(bundleId, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
+        }
+
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             throw NetworkError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
