@@ -39,11 +39,18 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.classmate.music
-        # Requested from Apple separately (per-app approval required); the
-        # entitlement key itself is safe to ship even before approval, but
-        # a device/TestFlight *archive* will need a provisioning profile
-        # that actually includes it once Apple grants it.
-        com.apple.developer.carplay-audio: true
+        # TODO(CarPlay): com.apple.developer.carplay-audio needs to be
+        # requested from Apple (https://developer.apple.com/contact/carplay/)
+        # before this can be re-added — confirmed by testing: a real
+        # device/TestFlight archive hard-fails signing with "Entitlement
+        # com.apple.developer.carplay-audio not found and could not be
+        # included in profile" until the account has been granted it. Local
+        # simulator builds work fine without it (no provisioning profile
+        # involved), which is how the CarPlay code itself was verified.
+        # Once granted: uncomment the line below, then in Xcode ->
+        # Signing & Capabilities -> + Capability -> CarPlay, or just let
+        # automatic signing regenerate the profile on the next archive.
+        # com.apple.developer.carplay-audio: true
     info:
       path: ClassMusic/Info.plist
       properties:
