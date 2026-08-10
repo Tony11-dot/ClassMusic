@@ -39,6 +39,11 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.classmate.music
+        # Requested from Apple separately (per-app approval required); the
+        # entitlement key itself is safe to ship even before approval, but
+        # a device/TestFlight *archive* will need a provisioning profile
+        # that actually includes it once Apple grants it.
+        com.apple.developer.carplay-audio: true
     info:
       path: ClassMusic/Info.plist
       properties:
@@ -50,10 +55,17 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        # No UIApplicationSceneManifest yet — pure SwiftUI App lifecycle
-        # manages its own default window scene implicitly. CarPlay (build
-        # stage 5) needs one added explicitly, since that requires an
-        # AppDelegate/SceneDelegate pair SwiftUI doesn't provide on its own.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          # No UIWindowSceneSessionRoleApplication entry here on purpose —
+          # AppDelegate.configurationForConnecting returns a plain
+          # UISceneConfiguration (no delegateClass override) for that role,
+          # which leaves SwiftUI's own App lifecycle handling the phone
+          # window exactly as before. Only CarPlay gets a custom delegate.
+          UISceneConfigurations:
+            CPTemplateApplicationSceneSessionRoleApplication:
+              - UISceneConfigurationName: CarPlay Configuration
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).CarPlaySceneDelegate
         YOUTUBE_API_KEY: $(YOUTUBE_API_KEY)
         BACKEND_BASE_URL: $(BACKEND_BASE_URL)
         BACKEND_API_KEY: $(BACKEND_API_KEY)

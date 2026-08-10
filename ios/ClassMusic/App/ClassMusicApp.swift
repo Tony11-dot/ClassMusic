@@ -3,6 +3,8 @@ import SwiftUI
 
 @main
 struct ClassMusicApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     let modelContainer: ModelContainer
     @State private var playbackManager = PlaybackManager()
     @State private var queueStore: QueueStore
@@ -27,6 +29,7 @@ struct ClassMusicApp: App {
         } catch {
             fatalError("Failed to create SwiftData ModelContainer: \(error)")
         }
+        ModelContainerHolder.shared = modelContainer
         _queueStore = State(initialValue: QueueStore(context: modelContainer.mainContext))
     }
 

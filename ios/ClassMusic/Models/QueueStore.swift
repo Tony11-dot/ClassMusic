@@ -9,6 +9,11 @@ import SwiftData
 @Observable
 @MainActor
 final class QueueStore {
+    /// CarPlaySceneDelegate runs as a separate scene delegate outside the
+    /// SwiftUI environment, so it looks this up rather than being handed
+    /// one via @Environment.
+    static weak var shared: QueueStore?
+
     private(set) var songs: [Song] = []
     private(set) var currentIndex: Int = 0
     private(set) var repeatMode: RepeatMode = .off
@@ -27,6 +32,7 @@ final class QueueStore {
             queue = created
         }
         refresh()
+        Self.shared = self
     }
 
     private func refresh() {
