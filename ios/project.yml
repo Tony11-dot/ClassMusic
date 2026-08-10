@@ -1,0 +1,104 @@
+name: ClassMusic
+options:
+  bundleIdPrefix: com.classmate
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    DEVELOPMENT_TEAM: NNFD7CKGLG
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    APP_GROUP_ID: group.com.classmate.music
+  configs:
+    Debug:
+      xcconfig: Config/Secrets.xcconfig
+    Release:
+      xcconfig: Config/Secrets.xcconfig
+
+targets:
+  ClassMusic:
+    type: application
+    platform: iOS
+    sources:
+      - path: ClassMusic
+      - path: Shared
+    dependencies:
+      - target: ClassMusicWidgetExtension
+        embed: true
+    entitlements:
+      path: ClassMusic/ClassMusic.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.classmate.music
+    info:
+      path: ClassMusic/Info.plist
+      properties:
+        CFBundleDisplayName: ClassMusic
+        UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # No UIApplicationSceneManifest yet — pure SwiftUI App lifecycle
+        # manages its own default window scene implicitly. CarPlay (build
+        # stage 5) needs one added explicitly, since that requires an
+        # AppDelegate/SceneDelegate pair SwiftUI doesn't provide on its own.
+        YOUTUBE_API_KEY: $(YOUTUBE_API_KEY)
+        BACKEND_BASE_URL: $(BACKEND_BASE_URL)
+        BACKEND_API_KEY: $(BACKEND_API_KEY)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.classmate.music
+        PRODUCT_NAME: ClassMusic
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    scheme:
+      testPlans: []
+      config: Debug
+
+  ClassMusicWidgetExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ClassMusicWidget
+      - path: Shared
+    entitlements:
+      path: ClassMusicWidget/ClassMusicWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.classmate.music
+    info:
+      path: ClassMusicWidget/Info.plist
+      properties:
+        CFBundleDisplayName: ClassMusic Widget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.classmate.music.widget
+        PRODUCT_NAME: ClassMusicWidget
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: true
+
+schemes:
+  ClassMusic:
+    build:
+      targets:
+        ClassMusic: all
+    run:
+      config: Debug
+    archive:
+      config: Release
