@@ -8,6 +8,11 @@ private let logger = Logger(subsystem: "com.classmate.music", category: "Playbac
 @Observable
 @MainActor
 final class PlaybackManager {
+    /// Looked up (not captured) from inside the Darwin notification
+    /// callback below, since that callback must be a capture-free
+    /// @convention(c) closure — see observeWidgetCommands().
+    static weak var shared: PlaybackManager?
+
     private(set) var currentSong: Song?
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
@@ -39,6 +44,33 @@ final class PlaybackManager {
         observeTime()
         configureRemoteCommands()
         observeInterruptions()
+        Self.shared = self
+        observeWidgetCommands()
+    }
+
+    /// Widget buttons run in the widget extension process and can't touch
+    /// this instance's AVPlayer directly, so they post a Darwin
+    /// notification (see WidgetCommand) instead. This only works while the
+    /// app process is alive — which it is throughout playback, thanks to
+    /// the background audio mode — not if it's been fully terminated.
+    private func observeWidgetCommands() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        for command in [WidgetCommand.togglePlayPause, .skipNext, .skipPrevious] {
+            CFNotificationCenterAddObserver(center, nil, { _, _, name, _, _ in
+                guard let name, let command = WidgetCommand(rawValue: name.rawValue as String) else { return }
+                Task { @MainActor in
+                    PlaybackManager.shared?.handleWidgetCommand(command)
+                }
+            }, command.darwinName, nil, .deliverImmediately)
+        }
+    }
+
+    private func handleWidgetCommand(_ command: WidgetCommand) {
+        switch command {
+        case .togglePlayPause: togglePlayPause()
+        case .skipNext: onSkipNext?()
+        case .skipPrevious: onSkipPrevious?()
+        }
     }
 
     /// Without this, a phone call silences AVPlayer but PlaybackManager

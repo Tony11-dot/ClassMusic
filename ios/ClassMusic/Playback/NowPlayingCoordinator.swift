@@ -1,6 +1,7 @@
 import Foundation
 import MediaPlayer
 import UIKit
+import WidgetKit
 import os
 
 private let logger = Logger(subsystem: "com.classmate.music", category: "NowPlaying")
@@ -88,12 +89,40 @@ final class NowPlayingCoordinator {
         infoCenter.nowPlayingInfo = info
         logger.info("nowPlayingInfo: title=\(song.title) artist=\(song.artist) duration=\(duration) elapsed=\(elapsed) rate=\(rate) hasArtwork=\(self.artworkCache[song.id] != nil)")
 
+        writeWidgetSnapshot(song: song, duration: duration, elapsed: elapsed, rate: rate)
+
         if artworkCache[song.id] == nil, let url = song.thumbnailURL {
-            loadArtwork(for: song.id, url: url)
+            loadArtwork(for: song, duration: duration, elapsed: elapsed, rate: rate, url: url)
         }
     }
 
-    private func loadArtwork(for songId: String, url: URL) {
+    // Single fixed filename, overwritten per track. That means there's a
+    // brief window right after switching tracks where this still holds the
+    // *previous* song's artwork until the new download finishes — an
+    // acceptable, self-correcting staleness rather than per-song files that
+    // would need their own cleanup.
+    private static let widgetArtworkFileName = "nowPlayingArtwork.jpg"
+
+    private func writeWidgetSnapshot(song: Song, duration: TimeInterval, elapsed: TimeInterval, rate: Float) {
+        let hasArtworkFile = FileManager.default.fileExists(
+            atPath: NowPlayingStore.artworkURL(fileName: Self.widgetArtworkFileName).path
+        )
+        let snapshot = NowPlayingSnapshot(
+            songId: song.id,
+            title: song.title,
+            artist: song.artist,
+            isPlaying: rate > 0,
+            elapsed: elapsed,
+            duration: duration,
+            updatedAt: .now,
+            artworkFileName: hasArtworkFile ? Self.widgetArtworkFileName : nil
+        )
+        NowPlayingStore.save(snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    private func loadArtwork(for song: Song, duration: TimeInterval, elapsed: TimeInterval, rate: Float, url: URL) {
+        let songId = song.id
         artworkLoadTask?.cancel()
         artworkLoadTask = Task { [weak self] in
             guard let (data, _) = try? await URLSession.shared.data(from: url),
@@ -114,6 +143,11 @@ final class NowPlayingCoordinator {
             if var info = self.infoCenter.nowPlayingInfo {
                 info[MPMediaItemPropertyArtwork] = artwork
                 self.infoCenter.nowPlayingInfo = info
+            }
+
+            if let jpegData = image.jpegData(compressionQuality: 0.8) {
+                try? jpegData.write(to: NowPlayingStore.artworkURL(fileName: Self.widgetArtworkFileName))
+                self.writeWidgetSnapshot(song: song, duration: duration, elapsed: elapsed, rate: rate)
             }
         }
     }
