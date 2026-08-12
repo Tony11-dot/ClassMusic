@@ -40,7 +40,7 @@ async def health() -> dict:
     # deploy can be confirmed live from the outside without dashboard/log
     # access — compare it before/after a push instead of guessing from
     # elapsed time whether the new image actually rolled out.
-    return {"status": "ok", "build": "resolve-cookies-1"}
+    return {"status": "ok", "build": "resolve-cookies-diag-1"}
 
 
 @app.get("/resolve")
@@ -54,7 +54,11 @@ async def resolve(
         raise HTTPException(status_code=400, detail="malformed video id")
     except ResolveFailed as exc:
         logger.warning("resolve failed for %s: %s", id, exc)
-        raise HTTPException(status_code=502, detail="could not resolve stream for this video")
+        # TEMPORARY diagnostic: surfacing the real yt-dlp exception instead
+        # of the generic message to debug the cookies rollout — revert to
+        # the generic 502 once resolved (see history: 2f070fc did the same
+        # thing for the pre-cookies bot-wall diagnosis).
+        raise HTTPException(status_code=502, detail=f"could not resolve stream: {exc}")
 
 
 _PASSTHROUGH_HEADERS = ("content-type", "content-length", "content-range", "accept-ranges")
