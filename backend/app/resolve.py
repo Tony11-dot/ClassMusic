@@ -20,6 +20,18 @@ _YDL_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
+    # A single player client (previously just the default/android_vr) is a
+    # single point of failure: YouTube blocks individual client+IP
+    # combinations independently, and Render's datacenter IP gets flagged
+    # far more readily than a residential one. Listing several clients lets
+    # yt-dlp fall back automatically if one is currently blocked for this
+    # IP. All of these avoid the JS-runtime signature path (the container
+    # has no deno/node installed), unlike "web".
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["ios", "android_vr", "android", "android_music"],
+        }
+    },
 }
 
 

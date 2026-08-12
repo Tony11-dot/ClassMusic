@@ -76,6 +76,10 @@ targets:
         YOUTUBE_API_KEY: $(YOUTUBE_API_KEY)
         BACKEND_BASE_URL: $(BACKEND_BASE_URL)
         BACKEND_API_KEY: $(BACKEND_API_KEY)
+        # Only standard HTTPS/TLS is used (no proprietary crypto), so this
+        # skips the export-compliance question App Store Connect otherwise
+        # asks on every single TestFlight/App Store upload.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.classmate.music
