@@ -52,19 +52,18 @@ _YDL_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
-    # The "ios"/"android"/"android_music" clients impersonate YouTube's own
-    # apps, which authenticate with their own embedded API keys rather than
-    # a browser session — handing them a cookiefile doesn't just do nothing,
-    # it broke extraction outright ("Failed to extract any player
-    # response"). "web" is the client that actually understands a browser
-    # cookie jar, so it goes first once real cookies are configured; the
-    # mobile clients stay as a fallback list for the no-cookies case (local
-    # dev, or if the cookie file is ever removed), since they're what
-    # originally got past the anonymous-IP bot-check wall.
+    # "web" is the only client that actually authenticates with a browser
+    # cookie jar — the mobile clients (ios/android/...) use their own
+    # embedded API keys and ignore it. But "web" alone doesn't reliably
+    # offer the itag 140 (m4a) format AVPlayer needs; keep the mobile
+    # clients in the list too so their formats still get merged in. yt-dlp
+    # queries every listed client and unions the format lists, so this
+    # gets both cookie-authenticated bot-wall bypass (web) and m4a
+    # availability (ios/android) in the same request.
     "extractor_args": {
         "youtube": {
             "player_client": (
-                ["web", "ios", "android_vr"] if _COOKIES_PATH
+                ["web", "ios", "android_vr", "android", "android_music"] if _COOKIES_PATH
                 else ["ios", "android_vr", "android", "android_music"]
             ),
         }
