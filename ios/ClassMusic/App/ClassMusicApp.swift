@@ -39,7 +39,7 @@ struct ClassMusicApp: App {
         WindowGroup {
             ZStack {
                 if showLaunch {
-                    LaunchView(theme: settings.theme) {
+                    LaunchView(theme: settings.theme, font: settings.font) {
                         withAnimation(.easeOut(duration: 0.25)) { showLaunch = false }
                     }
                     .transition(.opacity)

@@ -134,17 +134,59 @@ enum AppFont: String, CaseIterable, Identifiable {
         }
     }
 
-    func font(size: CGFloat) -> Font {
+    /// Weight is honored where the underlying face actually has distinct
+    /// weight variants (Cabinet, system, rounded, New York, Menlo, Georgia);
+    /// the decorative script/handwriting faces only ship one weight, so it's
+    /// silently ignored there — same as it would be if you asked the system
+    /// for a bold Snell Roundhand.
+    func font(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         switch self {
-        case .cabinet: return CMFonts.font(size: size)
-        case .rounded: return .system(size: size, design: .rounded)
-        case .newyork: return .system(size: size, design: .serif)
-        case .georgia: return .custom("Georgia", size: size)
-        case .menlo: return .custom("Menlo-Regular", size: size)
-        case .system: return .system(size: size)
+        case .cabinet: return CMFonts.font(size: size, weight: weight)
+        case .rounded: return .system(size: size, weight: weight, design: .rounded)
+        case .newyork: return .system(size: size, weight: weight, design: .serif)
+        case .georgia: return .custom(weight == .bold || weight == .heavy || weight == .black ? "Georgia-Bold" : "Georgia", size: size)
+        case .menlo: return .custom(weight == .bold || weight == .heavy || weight == .black ? "Menlo-Bold" : "Menlo-Regular", size: size)
+        case .system: return .system(size: size, weight: weight)
         default:
-            guard let postScriptName else { return .system(size: size) }
+            guard let postScriptName else { return .system(size: size, weight: weight) }
             return .custom(postScriptName, size: size)
+        }
+    }
+
+    /// A UIKit equivalent of `font(size:weight:)`, for the handful of
+    /// surfaces SwiftUI's `.font` environment never reaches — the tab bar
+    /// in particular, which renders its item labels through `UITabBarItem`
+    /// and ignores SwiftUI font modifiers/environment entirely.
+    func uiFont(size: CGFloat, weight: UIFont.Weight = .regular) -> UIFont {
+        switch self {
+        case .cabinet:
+            CMFonts.registerIfNeeded()
+            let name: String
+            switch weight {
+            case .bold, .heavy, .black: name = "CabinetGrotesk-Bold"
+            case .medium, .semibold: name = "CabinetGrotesk-Medium"
+            default: name = "CabinetGrotesk-Regular"
+            }
+            return UIFont(name: name, size: size) ?? .systemFont(ofSize: size, weight: weight)
+        case .rounded:
+            let base = UIFont.systemFont(ofSize: size, weight: weight)
+            let descriptor = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+            return UIFont(descriptor: descriptor, size: size)
+        case .newyork:
+            let base = UIFont.systemFont(ofSize: size, weight: weight)
+            let descriptor = base.fontDescriptor.withDesign(.serif) ?? base.fontDescriptor
+            return UIFont(descriptor: descriptor, size: size)
+        case .georgia:
+            let name = (weight == .bold || weight == .heavy || weight == .black) ? "Georgia-Bold" : "Georgia"
+            return UIFont(name: name, size: size) ?? .systemFont(ofSize: size, weight: weight)
+        case .menlo:
+            let name = (weight == .bold || weight == .heavy || weight == .black) ? "Menlo-Bold" : "Menlo-Regular"
+            return UIFont(name: name, size: size) ?? .systemFont(ofSize: size, weight: weight)
+        case .system:
+            return .systemFont(ofSize: size, weight: weight)
+        default:
+            guard let postScriptName else { return .systemFont(ofSize: size, weight: weight) }
+            return UIFont(name: postScriptName, size: size) ?? .systemFont(ofSize: size, weight: weight)
         }
     }
 }

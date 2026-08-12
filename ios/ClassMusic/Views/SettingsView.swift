@@ -10,43 +10,36 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                aboutSection
                 presetSection(title: "Light themes", presets: [.system] + AppTheme.lightFamily)
                 presetSection(title: "Dark themes", presets: AppTheme.darkFamily)
                 fontSection
+                Text("Version \(Bundle.main.appVersionString)")
+                    .font(settings.font.font(size: 12))
+                    .foregroundStyle(settings.theme.inkSecondary)
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
             }
             .scrollContentBackground(.hidden)
             .background(settings.theme.surface)
-            .navigationTitle("Settings")
-        }
-    }
-
-    // MARK: - About
-
-    private var aboutSection: some View {
-        Section {
-            HStack(spacing: 14) {
-                BrandLoader(size: 52, tint: settings.theme.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ClassMusic")
-                        .font(.headline)
-                    Text("Version \(Bundle.main.appVersionString)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                // In the nav bar itself, not a List safeAreaInset — the
+                // same lockup, the same placement, on every screen.
+                ToolbarItem(placement: .principal) { BrandHeaderBar() }
             }
-            .padding(.vertical, 4)
         }
-        .listRowBackground(settings.theme.surfaceRaised)
     }
 
     // MARK: - Theme
 
     private func presetSection(title: String, presets: [AppTheme]) -> some View {
-        Section(title) {
+        Section {
             ForEach(presets) { preset in
                 themeRow(preset)
             }
+        } header: {
+            Text(title).font(settings.font.font(size: 13))
         }
         .listRowBackground(settings.theme.surfaceRaised)
     }
@@ -74,7 +67,7 @@ struct SettingsView: View {
     // MARK: - Font
 
     private var fontSection: some View {
-        Section("Font") {
+        Section {
             ForEach(AppFont.allCases) { font in
                 Button {
                     settings.font = font
@@ -96,6 +89,8 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
             }
+        } header: {
+            Text("Font").font(settings.font.font(size: 13))
         }
         .listRowBackground(settings.theme.surfaceRaised)
     }

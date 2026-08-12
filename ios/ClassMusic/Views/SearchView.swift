@@ -40,6 +40,16 @@ struct SearchView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(settings.theme.surface)
+            .scrollDismissesKeyboard(.immediately)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                // Placed in the nav bar itself (not a List safeAreaInset)
+                // so it sits above the search field drawer, not below it —
+                // `.searchable` otherwise fuses the field into the bar,
+                // which would put it above any content-level inset.
+                ToolbarItem(placement: .principal) { BrandHeaderBar() }
+            }
             .overlay {
                 // Only the empty state depends on hasSearchedCurrentQuery —
                 // without it, this flashed "No results" on every keystroke,
@@ -59,8 +69,7 @@ struct SearchView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .navigationTitle("Search")
-            .searchable(text: $viewModel.query, prompt: "Songs, artists")
+            .searchable(text: $viewModel.query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Songs, artists")
             .onChange(of: viewModel.query) { _, _ in
                 viewModel.queryChanged()
             }
@@ -78,7 +87,7 @@ struct SearchView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Test Playback") {
+                    Button("Test") {
                         Task {
                             let song = Song(
                                 id: "dQw4w9WgXcQ",
@@ -89,6 +98,7 @@ struct SearchView: View {
                             await playback.play(song: song)
                         }
                     }
+                    .font(settings.font.font(size: 13))
                     .accessibilityIdentifier("debugTestPlaybackButton")
                 }
             }
@@ -98,6 +108,7 @@ struct SearchView: View {
 }
 
 private struct SearchResultRow: View {
+    @Environment(AppSettings.self) private var settings
     let result: YouTubeSearchResult
 
     var body: some View {
@@ -114,7 +125,7 @@ private struct SearchResultRow: View {
                 Text(result.title)
                     .lineLimit(1)
                 Text(result.artist)
-                    .font(.caption)
+                    .font(settings.font.font(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

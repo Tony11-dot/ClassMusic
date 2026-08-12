@@ -23,7 +23,7 @@ struct LibraryView: View {
                 }
                 .listRowBackground(settings.theme.surfaceRaised)
 
-                Section("Playlists") {
+                Section {
                     if playlists.isEmpty {
                         ContentUnavailableView("No Playlists", systemImage: "music.note.list")
                     }
@@ -32,19 +32,29 @@ struct LibraryView: View {
                             VStack(alignment: .leading) {
                                 Text(playlist.name)
                                 Text("\(playlist.items.count) songs")
-                                    .font(.caption)
+                                    .font(settings.font.font(size: 12))
                                     .foregroundStyle(.secondary)
                             }
                         }
                     }
                     .onDelete(perform: deletePlaylists)
+                } header: {
+                    Text("Playlists").font(settings.font.font(size: 13))
                 }
                 .listRowBackground(settings.theme.surfaceRaised)
             }
             .scrollContentBackground(.hidden)
             .background(settings.theme.surface)
             .navigationTitle("Library")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                // The `.principal` placement replaces the default "Library"
+                // title text with the shared brand lockup (in the nav bar
+                // itself, same as every other screen); `navigationTitle`
+                // stays set purely so pushed screens still get "Library" as
+                // their back-button label.
+                ToolbarItem(placement: .principal) { BrandHeaderBar() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("New Playlist", systemImage: "plus") {
                         newPlaylistName = ""

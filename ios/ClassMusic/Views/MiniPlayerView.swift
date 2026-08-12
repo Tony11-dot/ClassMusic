@@ -17,10 +17,10 @@ struct MiniPlayerView: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(song.title)
-                        .font(.subheadline.weight(.medium))
+                        .font(settings.font.font(size: 15, weight: .medium))
                         .lineLimit(1)
                     Text(song.artist)
-                        .font(.caption)
+                        .font(settings.font.font(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }

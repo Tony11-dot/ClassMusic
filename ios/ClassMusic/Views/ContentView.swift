@@ -27,9 +27,11 @@ struct ContentView: View {
                     .tag(2)
             }
             .tint(settings.theme.accent)
+            .onAppear { applyTabBarFont() }
+            .onChange(of: settings.font) { _, _ in applyTabBarFont() }
 
             MiniPlayerView()
-                .padding(.bottom, 49)  // clear the tab bar
+                .padding(.bottom, 49 + 10)  // clear the tab bar, plus a floating gap above it
                 .opacity(1 - playerExpansion)
                 .allowsHitTesting(playerExpansion < 0.05)
                 .simultaneousGesture(playerDragGesture)
@@ -43,7 +45,11 @@ struct ContentView: View {
                         .frame(width: geo.size.width, height: geo.size.height)
                         .background(settings.theme.surface)
                         .offset(y: (1 - playerExpansion) * geo.size.height)
-                        .opacity(playerExpansion < 0.01 ? 0 : 1)
+                        // No opacity toggle here on purpose: a hard 0/1 cutoff
+                        // at a fixed threshold flickered whenever ordinary
+                        // finger jitter crossed back and forth over it right
+                        // at the end of a drag. The offset alone already
+                        // parks the view fully off-screen at expansion 0.
                         // Must stay hit-testable for as long as the view is
                         // even partly visible — gating this on a >0.5
                         // threshold cut hit-testing out from under an
@@ -64,6 +70,8 @@ struct ContentView: View {
             #if DEBUG
             await autoplayIfRequested()
             exerciseLibraryIfRequested()
+            expandPlayerIfRequested()
+            if ProcessInfo.processInfo.environment["UITEST_SETTINGS_TAB"] == "1" { selectedTab = 2 }
             #endif
         }
     }
@@ -81,6 +89,18 @@ struct ContentView: View {
                     playerExpansion = shouldOpen ? 1 : 0
                 }
             }
+    }
+
+    /// `UITabBarItem` renders through UIKit and ignores SwiftUI's `.font`
+    /// environment entirely, so the chosen font would otherwise never reach
+    /// the tab bar labels — this is the one place that has to go through
+    /// the UIKit appearance proxy instead, reapplied whenever the font
+    /// changes since the proxy doesn't observe SwiftUI state on its own.
+    private func applyTabBarFont() {
+        let font = settings.font.uiFont(size: 10, weight: .medium)
+        let appearance = UITabBarItem.appearance()
+        appearance.setTitleTextAttributes([.font: font], for: .normal)
+        appearance.setTitleTextAttributes([.font: font], for: .selected)
     }
 
     private func expand() {
@@ -150,6 +170,14 @@ struct ContentView: View {
         playlist.items.append(item)
 
         queueStore.enqueue(song)
+    }
+
+    /// Driven by `SIMCTL_CHILD_UITEST_EXPAND_PLAYER=1` — jumps straight to
+    /// the full player since `devicectl`/`simctl` have no way to simulate
+    /// the drag-to-expand gesture itself.
+    private func expandPlayerIfRequested() {
+        guard ProcessInfo.processInfo.environment["UITEST_EXPAND_PLAYER"] == "1" else { return }
+        playerExpansion = 1
     }
     #endif
 }

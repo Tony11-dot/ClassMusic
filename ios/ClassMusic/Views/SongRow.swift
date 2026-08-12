@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SongRow: View {
+    @Environment(AppSettings.self) private var settings
     let song: Song
 
     var body: some View {
@@ -17,7 +18,7 @@ struct SongRow: View {
                 Text(song.title)
                     .lineLimit(1)
                 Text(song.artist)
-                    .font(.caption)
+                    .font(settings.font.font(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

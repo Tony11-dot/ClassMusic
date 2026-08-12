@@ -23,11 +23,11 @@ struct NowPlayingView: View {
                 if let song = playback.currentSong {
                     VStack(spacing: 4) {
                         Text(song.title)
-                            .font(.title2.bold())
+                            .font(settings.font.font(size: 22, weight: .bold))
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
                         Text(song.artist)
-                            .font(.title3)
+                            .font(settings.font.font(size: 20))
                             .foregroundStyle(settings.theme.inkSecondary)
                     }
                     .padding(.horizontal)
@@ -57,14 +57,17 @@ struct NowPlayingView: View {
         .foregroundStyle(settings.theme.ink)
     }
 
+    // No gesture attached here directly — it's nested inside the outer
+    // VStack, which already carries `collapseDragGesture`. Attaching the
+    // same gesture to both a view and its ancestor created two competing
+    // recognizers that occasionally swapped mid-drag, producing the
+    // stutter/glitch during pull-down.
     private var dragHandle: some View {
         Capsule()
             .fill(settings.theme.inkSecondary.opacity(0.35))
             .frame(width: 44, height: 5)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-            .gesture(collapseDragGesture)
     }
 
     private var collapseDragGesture: some Gesture {
@@ -116,53 +119,74 @@ struct NowPlayingView: View {
                 Spacer()
                 Text(format(playback.duration))
             }
-            .font(.caption)
+            .font(settings.font.font(size: 12))
             .foregroundStyle(settings.theme.inkSecondary)
         }
         .padding(.horizontal)
     }
 
     private var transportControls: some View {
-        HStack(spacing: 36) {
-            Button {
+        HStack(spacing: 14) {
+            glassButton("shuffle", size: 13, dimension: 34, active: queueStore.isShuffled) {
                 queueStore.toggleShuffle()
-            } label: {
-                Image(systemName: "shuffle")
-                    .foregroundStyle(queueStore.isShuffled ? settings.theme.accent : settings.theme.inkSecondary)
             }
 
-            Button {
+            glassButton("backward.fill", size: 17, dimension: 46) {
                 if let song = queueStore.skipToPrevious() {
                     Task { await playback.play(song: song) }
                 }
-            } label: {
-                Image(systemName: "backward.fill").font(.title)
             }
 
             Button {
                 playback.togglePlayPause()
             } label: {
-                Image(systemName: playback.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 56))
+                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 60, height: 60)
             }
+            .buttonStyle(.glassProminent)
+            .tint(settings.theme.accent)
+            .frame(width: 60, height: 60)
+            .clipShape(Circle())
 
-            Button {
+            glassButton("forward.fill", size: 17, dimension: 46) {
                 if let song = queueStore.skipToNext() {
                     Task { await playback.play(song: song) }
                 }
-            } label: {
-                Image(systemName: "forward.fill").font(.title)
             }
 
-            Button {
+            glassButton(
+                queueStore.repeatMode == .one ? "repeat.1" : "repeat",
+                size: 13, dimension: 34, active: queueStore.repeatMode != .off
+            ) {
                 cycleRepeatMode()
-            } label: {
-                Image(systemName: queueStore.repeatMode == .one ? "repeat.1" : "repeat")
-                    .foregroundStyle(queueStore.repeatMode == .off ? settings.theme.inkSecondary : settings.theme.accent)
             }
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(settings.theme.ink)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// A single Liquid Glass transport control — native `.glass` button
+    /// material (matching the mini player's `.glassEffect` chrome) instead
+    /// of a plain tinted SF Symbol, with the theme accent standing in for
+    /// system tint so it still reads as "on" per-theme. The explicit
+    /// `.frame` *after* `.buttonStyle`/`.clipShape` matters: the glass style
+    /// adds its own chrome padding around the label, which otherwise makes
+    /// the button wider than the frame set on the label alone and pushes
+    /// the outer buttons off the edge of the row.
+    private func glassButton(
+        _ systemImage: String, size: CGFloat, dimension: CGFloat, active: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(active ? settings.theme.accent : settings.theme.ink)
+                .frame(width: dimension, height: dimension)
+        }
+        .buttonStyle(.glass)
+        .frame(width: dimension, height: dimension)
+        .clipShape(Circle())
     }
 
     private func cycleRepeatMode() {

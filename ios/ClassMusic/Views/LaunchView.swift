@@ -8,6 +8,7 @@ struct LaunchView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let theme: AppTheme
+    let font: AppFont
     let onFinished: () -> Void
 
     @State private var decorIn = false
@@ -25,18 +26,14 @@ struct LaunchView: View {
                 .opacity(decorIn ? 1 : 0)
 
             VStack(spacing: 14) {
-                Image("BrandMark")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: markSize, height: markSize)
-                    .clipShape(RoundedRectangle(cornerRadius: markSize * 0.22, style: .continuous))
+                BrandMarkView(size: markSize, background: theme.accent)
                     .shadow(color: theme.accent.opacity(0.35), radius: 16, y: 8)
                     .scaleEffect(markIn ? 1 : 0.35)
                     .opacity(markIn ? 1 : 0)
 
                 if showWord {
                     Text("ClassMusic")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(font.font(size: 26, weight: .bold))
                         .foregroundStyle(theme.accent)
                         .transition(.asymmetric(
                             insertion: .move(edge: .bottom).combined(with: .opacity),
