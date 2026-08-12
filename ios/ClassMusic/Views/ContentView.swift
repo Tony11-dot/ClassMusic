@@ -44,8 +44,13 @@ struct ContentView: View {
                         .background(settings.theme.surface)
                         .offset(y: (1 - playerExpansion) * geo.size.height)
                         .opacity(playerExpansion < 0.01 ? 0 : 1)
-                        .allowsHitTesting(playerExpansion > 0.5)
-                        .ignoresSafeArea()
+                        // Must stay hit-testable for as long as the view is
+                        // even partly visible — gating this on a >0.5
+                        // threshold cut hit-testing out from under an
+                        // in-progress drag the moment it crossed halfway,
+                        // which is exactly what broke "pull down to collapse".
+                        .allowsHitTesting(playerExpansion > 0.01)
+                        .ignoresSafeArea(edges: .bottom)
                 }
             }
         }

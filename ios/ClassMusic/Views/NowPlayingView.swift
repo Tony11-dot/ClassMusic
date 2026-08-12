@@ -13,22 +13,30 @@ struct NowPlayingView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            dragHandle
-
-            artwork
+            // The handle, artwork, and title/artist block all share the
+            // collapse gesture — not just the small handle — since that's
+            // where people actually try to pull down from. The slider and
+            // transport buttons keep their own gestures untouched below.
+            VStack(spacing: 24) {
+                dragHandle
+                artwork
+                if let song = playback.currentSong {
+                    VStack(spacing: 4) {
+                        Text(song.title)
+                            .font(.title2.bold())
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                        Text(song.artist)
+                            .font(.title3)
+                            .foregroundStyle(settings.theme.inkSecondary)
+                    }
+                    .padding(.horizontal)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(collapseDragGesture)
 
             if let song = playback.currentSong {
-                VStack(spacing: 4) {
-                    Text(song.title)
-                        .font(.title2.bold())
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                    Text(song.artist)
-                        .font(.title3)
-                        .foregroundStyle(settings.theme.inkSecondary)
-                }
-                .padding(.horizontal)
-
                 progressSection
                 transportControls
 
@@ -63,11 +71,15 @@ struct NowPlayingView: View {
         DragGesture(minimumDistance: 4)
             .onChanged { value in
                 let dragDown = max(value.translation.height, 0)
-                expansion = max(1 - dragDown / 300, 0)
+                expansion = max(1 - dragDown / 250, 0)
             }
             .onEnded { value in
+                let dragDown = max(value.translation.height, 0)
                 let predictedDown = max(value.predictedEndTranslation.height, 0)
-                let shouldClose = expansion < 0.65 || predictedDown > 220
+                // Any deliberate pull (not just a long one) or a flick
+                // commits to closing — a short, hesitant drag was
+                // snapping right back open before.
+                let shouldClose = dragDown > 70 || predictedDown > 140 || expansion < 0.75
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                     expansion = shouldClose ? 0 : 1
                 }
