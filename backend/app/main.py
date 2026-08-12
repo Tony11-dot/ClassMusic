@@ -40,7 +40,7 @@ async def health() -> dict:
     # deploy can be confirmed live from the outside without dashboard/log
     # access — compare it before/after a push instead of guessing from
     # elapsed time whether the new image actually rolled out.
-    return {"status": "ok", "build": "resolve-client-fallback-1"}
+    return {"status": "ok", "build": "resolve-debug-2"}
 
 
 @app.get("/resolve")
@@ -54,7 +54,10 @@ async def resolve(
         raise HTTPException(status_code=400, detail="malformed video id")
     except ResolveFailed as exc:
         logger.warning("resolve failed for %s: %s", id, exc)
-        raise HTTPException(status_code=502, detail="could not resolve stream for this video")
+        # TEMPORARY: surfacing the real yt-dlp exception text to diagnose a
+        # live 502 with no dashboard/log access. Revert to the generic
+        # message once the root cause is confirmed fixed.
+        raise HTTPException(status_code=502, detail=f"could not resolve stream for this video: {exc}"[:500])
 
 
 _PASSTHROUGH_HEADERS = ("content-type", "content-length", "content-range", "accept-ranges")
@@ -72,7 +75,10 @@ async def stream(
         raise HTTPException(status_code=400, detail="malformed video id")
     except ResolveFailed as exc:
         logger.warning("resolve failed for %s: %s", id, exc)
-        raise HTTPException(status_code=502, detail="could not resolve stream for this video")
+        # TEMPORARY: surfacing the real yt-dlp exception text to diagnose a
+        # live 502 with no dashboard/log access. Revert to the generic
+        # message once the root cause is confirmed fixed.
+        raise HTTPException(status_code=502, detail=f"could not resolve stream for this video: {exc}"[:500])
 
     range_header = request.headers.get("range")
     upstream_headers = {"range": range_header} if range_header else {}
