@@ -1,3 +1,4 @@
+import os
 import re
 import time
 
@@ -11,6 +12,19 @@ _VIDEO_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{11}$")
 
 _cache: TTLCache = TTLCache(maxsize=settings.cache_max_size, ttl=settings.cache_ttl_seconds)
 
+# Confirmed root cause of the standing 502s: YouTube serves Render's
+# datacenter IP a bot-check wall ("Sign in to confirm you're not a bot") —
+# reproduced with identical yt-dlp options/version from a residential IP,
+# where it resolves fine. No player-client fallback works around this; the
+# documented fix is authenticating requests with real YouTube cookies.
+# Render's "Secret Files" feature mounts uploaded files under /etc/secrets/
+# in the running container — add one there named `youtube_cookies.txt`
+# (exported from a real, signed-in-to-YouTube browser session, Netscape
+# cookies.txt format) and this picks it up automatically on next deploy.
+# Until that file exists, resolution keeps working exactly as before for
+# whatever isn't currently bot-walled.
+_COOKIES_PATH = os.environ.get("YTDLP_COOKIES_FILE", "/etc/secrets/youtube_cookies.txt")
+
 _YDL_OPTS = {
     # AVPlayer has no Opus/WebM support, so the default "bestaudio" pick
     # (usually itag 251, webm/opus) is silently unplayable on iOS. Force
@@ -20,18 +34,15 @@ _YDL_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
-    # A single player client (previously just the default/android_vr) is a
-    # single point of failure: YouTube blocks individual client+IP
-    # combinations independently, and Render's datacenter IP gets flagged
-    # far more readily than a residential one. Listing several clients lets
-    # yt-dlp fall back automatically if one is currently blocked for this
-    # IP. All of these avoid the JS-runtime signature path (the container
-    # has no deno/node installed), unlike "web".
+    # Trying several player clients costs nothing and still helps for
+    # anything that isn't the bot-check wall (format availability quirks,
+    # a single client being independently rate-limited, etc).
     "extractor_args": {
         "youtube": {
             "player_client": ["ios", "android_vr", "android", "android_music"],
         }
     },
+    **({"cookiefile": _COOKIES_PATH} if os.path.exists(_COOKIES_PATH) else {}),
 }
 
 
