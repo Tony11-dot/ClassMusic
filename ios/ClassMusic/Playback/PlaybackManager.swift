@@ -37,6 +37,9 @@ final class PlaybackManager {
     // makes touching them off-actor safe.
     private nonisolated(unsafe) var timeObserver: Any?
     private nonisolated(unsafe) var itemEndObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var itemFailureObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var itemStatusObservation: NSKeyValueObservation?
+    private var readyTimeoutTask: Task<Void, Never>?
 
     init(resolveClient: ResolveClient = ResolveClient()) {
         self.resolveClient = resolveClient
@@ -113,6 +116,8 @@ final class PlaybackManager {
     deinit {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         if let itemEndObserver { NotificationCenter.default.removeObserver(itemEndObserver) }
+        if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver) }
+        itemStatusObservation?.invalidate()
     }
 
     private func configureAudioSession() {
@@ -157,8 +162,11 @@ final class PlaybackManager {
                 duration = resolvedDuration
             }
 
-            let item = AVPlayerItem(url: resolved.streamURL)
-            attachEndObserver(to: item)
+            let asset = AVURLAsset(url: resolved.streamURL, options: [
+                "AVURLAssetHTTPHeaderFieldsKey": resolved.streamHeaders,
+            ])
+            let item = AVPlayerItem(asset: asset)
+            attachObservers(to: item)
             player.replaceCurrentItem(with: item)
             player.play()
             isPlaying = true
@@ -167,11 +175,15 @@ final class PlaybackManager {
         } catch {
             logger.error("resolve/play failed for \(song.id): \(error.localizedDescription)")
             loadError = error.localizedDescription
+            isBuffering = false
         }
-        isBuffering = false
     }
 
-    private func attachEndObserver(to item: AVPlayerItem) {
+    /// Wires up everything needed so a broken stream surfaces as `loadError`
+    /// instead of leaving the UI stuck on a spinner forever: end-of-item,
+    /// mid-playback failures, initial load failures (KVO on `.status`), and
+    /// a timeout in case the item never resolves either way.
+    private func attachObservers(to item: AVPlayerItem) {
         if let itemEndObserver {
             NotificationCenter.default.removeObserver(itemEndObserver)
         }
@@ -185,6 +197,53 @@ final class PlaybackManager {
                 self?.onTrackFinished?()
             }
         }
+
+        if let itemFailureObserver {
+            NotificationCenter.default.removeObserver(itemFailureObserver)
+        }
+        itemFailureObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] notification in
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            MainActor.assumeIsolated {
+                self?.handleLoadFailure(error?.localizedDescription ?? "Playback failed")
+            }
+        }
+
+        itemStatusObservation?.invalidate()
+        // AVPlayerItem's KVO callbacks aren't guaranteed to land on the main
+        // queue, unlike the notification observers above.
+        itemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                switch item.status {
+                case .failed:
+                    self.handleLoadFailure(item.error?.localizedDescription ?? "This track couldn't be played")
+                case .readyToPlay:
+                    self.isBuffering = false
+                case .unknown:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
+
+        readyTimeoutTask?.cancel()
+        readyTimeoutTask = Task { [weak self, weak item] in
+            try? await Task.sleep(for: .seconds(20))
+            guard !Task.isCancelled, let self, let item, item.status != .readyToPlay else { return }
+            self.handleLoadFailure("Stream timed out — check your connection and try again")
+        }
+    }
+
+    private func handleLoadFailure(_ message: String) {
+        loadError = message
+        isBuffering = false
+        isPlaying = false
+        player.pause()
     }
 
     func pause() {
@@ -202,6 +261,10 @@ final class PlaybackManager {
 
     func togglePlayPause() {
         isPlaying ? pause() : resume()
+    }
+
+    func clearLoadError() {
+        loadError = nil
     }
 
     func seek(to time: TimeInterval) {

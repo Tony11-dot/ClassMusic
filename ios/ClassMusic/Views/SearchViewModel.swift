@@ -8,6 +8,11 @@ final class SearchViewModel {
     private(set) var results: [YouTubeSearchResult] = []
     private(set) var isSearching = false
     private(set) var errorMessage: String?
+    /// Distinguishes "haven't searched this query yet" (debounce still
+    /// pending) from "searched and got zero results" — without it, the
+    /// empty-state view flashed on every keystroke, before the debounced
+    /// search had even fired.
+    private(set) var hasSearchedCurrentQuery = false
 
     private let client: YouTubeSearchClient
     private var searchTask: Task<Void, Never>?
@@ -20,6 +25,7 @@ final class SearchViewModel {
     /// against a ~100/day free-tier budget) per keystroke.
     func queryChanged() {
         searchTask?.cancel()
+        hasSearchedCurrentQuery = false
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             results = []
@@ -27,7 +33,7 @@ final class SearchViewModel {
             return
         }
         searchTask = Task {
-            try? await Task.sleep(for: .milliseconds(500))
+            try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
             await runSearch(query: trimmed)
         }
@@ -43,5 +49,6 @@ final class SearchViewModel {
             errorMessage = error.localizedDescription
         }
         isSearching = false
+        hasSearchedCurrentQuery = true
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 struct SearchView: View {
     @Environment(PlaybackManager.self) private var playback
     @Environment(QueueStore.self) private var queueStore
+    @Environment(AppSettings.self) private var settings
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel = SearchViewModel()
     @State private var playlistSheetResult: YouTubeSearchResult?
@@ -38,10 +39,22 @@ struct SearchView: View {
             }
             .listStyle(.plain)
             .overlay {
-                if viewModel.isSearching {
-                    ProgressView()
-                } else if viewModel.results.isEmpty && !viewModel.query.isEmpty {
-                    ContentUnavailableView.search(text: viewModel.query)
+                // Only the empty state depends on hasSearchedCurrentQuery —
+                // without it, this flashed "No results" on every keystroke,
+                // before the debounced search had even run.
+                if viewModel.results.isEmpty && !viewModel.query.isEmpty {
+                    if viewModel.hasSearchedCurrentQuery && !viewModel.isSearching {
+                        ContentUnavailableView.search(text: viewModel.query)
+                    } else {
+                        BrandLoader(size: 44, tint: settings.theme.accent)
+                    }
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                if viewModel.isSearching && !viewModel.results.isEmpty {
+                    BrandLoader(size: 24, tint: settings.theme.accent)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity)
                 }
             }
             .navigationTitle("Search")

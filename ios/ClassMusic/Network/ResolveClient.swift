@@ -1,21 +1,21 @@
 import Foundation
 
-struct ResolvedStream: Decodable {
+struct ResolvedStream {
     let id: String
+    /// Always our own backend's /stream endpoint, never the raw googlevideo
+    /// URL — see the comment on ResolveClient.resolve below for why.
     let streamURL: URL
     let title: String?
     let artist: String?
     let duration: Double?
     let thumbnail: URL?
-
-    enum CodingKeys: String, CodingKey {
-        case id, title, artist, duration, thumbnail
-        case streamURL = "stream_url"
-    }
+    /// Headers AVURLAsset must send with streamURL (the backend's X-API-Key
+    /// auth, since a plain AVPlayerItem(url:) can't attach custom headers).
+    let streamHeaders: [String: String]
 }
 
 /// Talks to the self-hosted resolve backend (see backend/app/main.py), which
-/// turns a YouTube video ID into a direct, AVPlayer-playable AAC stream URL.
+/// turns a YouTube video ID into a direct, AVPlayer-playable AAC stream.
 struct ResolveClient {
     private let session: URLSession
     private let baseURL: URL
@@ -42,6 +42,12 @@ struct ResolveClient {
         return (200..<300).contains(http.statusCode)
     }
 
+    /// Fetches metadata from /resolve, but ignores its `stream_url` field —
+    /// that's the raw googlevideo URL, and YouTube's CDN signs it with the
+    /// requesting IP baked into `sparams`. Handing that straight to AVPlayer
+    /// on the phone gets rejected, since the phone's IP isn't the backend's.
+    /// Playback goes through /stream instead, which proxies the audio bytes
+    /// through the same backend process/IP that resolved them.
     func resolve(videoId: String) async throws -> ResolvedStream {
         var url = baseURL.appendingPathComponent("resolve")
         url.append(queryItems: [URLQueryItem(name: "id", value: videoId)])
@@ -57,10 +63,33 @@ struct ResolveClient {
             throw NetworkError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
 
+        let metadata: ResolveMetadata
         do {
-            return try JSONDecoder().decode(ResolvedStream.self, from: data)
+            metadata = try JSONDecoder().decode(ResolveMetadata.self, from: data)
         } catch {
             throw NetworkError.decoding(error)
         }
+
+        var streamURL = baseURL.appendingPathComponent("stream")
+        streamURL.append(queryItems: [URLQueryItem(name: "id", value: videoId)])
+        let headers = apiKey.isEmpty ? [:] : ["X-API-Key": apiKey]
+
+        return ResolvedStream(
+            id: metadata.id,
+            streamURL: streamURL,
+            title: metadata.title,
+            artist: metadata.artist,
+            duration: metadata.duration,
+            thumbnail: metadata.thumbnail,
+            streamHeaders: headers
+        )
     }
+}
+
+private struct ResolveMetadata: Decodable {
+    let id: String
+    let title: String?
+    let artist: String?
+    let duration: Double?
+    let thumbnail: URL?
 }

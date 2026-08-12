@@ -17,6 +17,9 @@ struct ContentView: View {
                 LibraryView()
                     .tabItem { Label("Library", systemImage: "music.note.list") }
                     .tag(1)
+                SettingsView()
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
+                    .tag(2)
             }
 
             MiniPlayerView()
@@ -26,6 +29,11 @@ struct ContentView: View {
         .sheet(isPresented: $showNowPlaying) {
             NowPlayingView()
         }
+        .alert("Couldn't play track", isPresented: loadErrorBinding, presenting: playback.loadError) { _ in
+            Button("OK") { playback.clearLoadError() }
+        } message: { message in
+            Text(message)
+        }
         .task {
             wireQueueToPlayback()
             #if DEBUG
@@ -33,6 +41,13 @@ struct ContentView: View {
             exerciseLibraryIfRequested()
             #endif
         }
+    }
+
+    private var loadErrorBinding: Binding<Bool> {
+        Binding(
+            get: { playback.loadError != nil },
+            set: { if !$0 { playback.clearLoadError() } }
+        )
     }
 
     private func wireQueueToPlayback() {

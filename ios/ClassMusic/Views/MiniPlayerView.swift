@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @Environment(PlaybackManager.self) private var playback
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         if let song = playback.currentSong {
@@ -27,8 +28,7 @@ struct MiniPlayerView: View {
                 Spacer()
 
                 if playback.isBuffering {
-                    ProgressView()
-                        .frame(width: 32, height: 32)
+                    BrandLoader(size: 32, tint: settings.theme.accent)
                 } else {
                     Button {
                         playback.togglePlayPause()
