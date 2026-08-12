@@ -4,10 +4,12 @@ import SwiftUI
 /// `CmLoading` (`cm_loading.dart`) — not the "N" variant ClassMate-Notes
 /// forked for "ClassNotes", the original "C then M" (ClassMate's initials,
 /// which ClassMusic happens to share): the C arc strokes in, then the M
-/// rises stem-valley-stem, then both cross-fade into the real mark, hold,
-/// and loop. Geometry (arc center/radius/angles, the M polyline points,
-/// stroke widths, timeline fractions) is copied verbatim from the Flutter
-/// source's 512-unit trace — this is the same animation, not a reproduction.
+/// rises stem-valley-stem, holds fully drawn, fades out, and loops — pure
+/// stroke drawing throughout, no crossfade to a static logo at the end.
+/// Geometry (arc center/radius/angles, the M polyline points, stroke
+/// widths) is copied verbatim from the Flutter source's 512-unit trace —
+/// this is the same animation, not a reproduction. Tint tracks whatever
+/// theme is passed in, same as the launch screen's mark.
 struct BrandLoader: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -23,48 +25,41 @@ struct BrandLoader: View {
 
     var body: some View {
         if reduceMotion {
-            brandMark.opacity(1)
+            strokes(cProgress: 1, mProgress: 1).opacity(1)
+                .frame(width: size, height: size)
+                .accessibilityLabel("Loading")
         } else {
             TimelineView(.animation) { timeline in
                 let phase = (timeline.date.timeIntervalSinceReferenceDate
                     .truncatingRemainder(dividingBy: Self.period)) / Self.period
                 let cProgress = ease(seg(phase, 0.00, 0.36))
                 let mProgress = ease(seg(phase, 0.32, 0.64))
-                let crossfade = seg(phase, 0.66, 0.78)
-                let restartFade = seg(phase, 0.90, 1.00)
-                let strokesOpacity = (1 - crossfade) * (1 - restartFade)
-                let iconOpacity = crossfade * (1 - restartFade)
+                let fadeIn = seg(phase, 0.00, 0.05)
+                let fadeOut = 1 - seg(phase, 0.86, 1.00)
+                let opacity = min(fadeIn, fadeOut)
 
-                ZStack {
-                    Canvas { context, canvasSize in
-                        let scale = min(canvasSize.width, canvasSize.height) / 512
-                        let transform = CGAffineTransform(scaleX: scale, y: scale)
-                        if cProgress > 0, let cPath = Self.cPath(progress: cProgress)?.applying(transform) {
-                            context.stroke(cPath, with: .color(tint), style: StrokeStyle(lineWidth: 44 * scale, lineCap: .butt))
-                        }
-                        if mProgress > 0, let mPath = Self.mPath(progress: mProgress)?.applying(transform) {
-                            context.stroke(
-                                mPath, with: .color(tint),
-                                style: StrokeStyle(lineWidth: 42 * scale, lineCap: .butt, lineJoin: .miter, miterLimit: 8)
-                            )
-                        }
-                    }
-                    .opacity(strokesOpacity)
-
-                    brandMark.opacity(iconOpacity)
-                }
+                strokes(cProgress: cProgress, mProgress: mProgress)
+                    .opacity(opacity)
             }
             .frame(width: size, height: size)
             .accessibilityLabel("Loading")
         }
     }
 
-    private var brandMark: some View {
-        Image("BrandMark")
-            .resizable()
-            .scaledToFit()
-            .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+    private func strokes(cProgress: Double, mProgress: Double) -> some View {
+        Canvas { context, canvasSize in
+            let scale = min(canvasSize.width, canvasSize.height) / 512
+            let transform = CGAffineTransform(scaleX: scale, y: scale)
+            if cProgress > 0, let cPath = Self.cPath(progress: cProgress)?.applying(transform) {
+                context.stroke(cPath, with: .color(tint), style: StrokeStyle(lineWidth: 44 * scale, lineCap: .butt))
+            }
+            if mProgress > 0, let mPath = Self.mPath(progress: mProgress)?.applying(transform) {
+                context.stroke(
+                    mPath, with: .color(tint),
+                    style: StrokeStyle(lineWidth: 42 * scale, lineCap: .butt, lineJoin: .miter, miterLimit: 8)
+                )
+            }
+        }
     }
 
     private func seg(_ v: Double, _ from: Double, _ to: Double) -> Double {

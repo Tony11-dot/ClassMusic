@@ -4,6 +4,7 @@ import SwiftUI
 struct FavoritesView: View {
     @Environment(PlaybackManager.self) private var playback
     @Environment(QueueStore.self) private var queueStore
+    @Environment(AppSettings.self) private var settings
     @Query(filter: #Predicate<Song> { $0.isFavorite }, sort: \Song.dateAdded, order: .reverse)
     private var favorites: [Song]
 
@@ -19,6 +20,7 @@ struct FavoritesView: View {
                     SongRow(song: song)
                 }
                 .buttonStyle(.plain)
+                .listRowBackground(settings.theme.surfaceRaised)
                 .swipeActions {
                     Button("Unfavorite", systemImage: "heart.slash") {
                         song.isFavorite = false
@@ -31,6 +33,8 @@ struct FavoritesView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(settings.theme.surface)
         .navigationTitle("Favorites")
     }
 }

@@ -18,26 +18,37 @@ struct AmbientBackground: View {
     private static let glyphs = ["♪", "♫", "○", "∞", "★", "≈", "•"]
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
-            Canvas { context, size in
-                var rng = SplitMix64(seed: UInt64(seed) &* 0x9E3779B9)
-                let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                for index in 0..<18 {
-                    let baseX = rng.nextUnit() * size.width
-                    let baseY = rng.nextUnit() * size.height
-                    let drift = CGFloat(sin(t * 0.15 + Double(index))) * 14
-                    let glyph = Self.glyphs[index % Self.glyphs.count]
-                    let fontSize = 14 + rng.nextUnit() * 24
-                    let alpha = 0.06 + rng.nextUnit() * 0.10
-                    let resolved = context.resolve(
-                        Text(glyph).font(.system(size: fontSize, weight: .semibold))
-                    )
-                    context.opacity = alpha
-                    context.draw(resolved, at: CGPoint(x: baseX, y: baseY + drift), anchor: .center)
+        ZStack {
+            // A stronger tinted wash beneath the glyphs — a radial bloom of
+            // the accent, fading to the surface at the edges — so the
+            // launch screen reads as themed at a glance, not just white
+            // with faint decoration.
+            RadialGradient(
+                colors: [accent.opacity(0.30), accent.opacity(0.10), .clear],
+                center: .center, startRadius: 0, endRadius: 420
+            )
+
+            TimelineView(.animation(paused: reduceMotion)) { timeline in
+                Canvas { context, size in
+                    var rng = SplitMix64(seed: UInt64(seed) &* 0x9E3779B9)
+                    let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                    for index in 0..<18 {
+                        let baseX = rng.nextUnit() * size.width
+                        let baseY = rng.nextUnit() * size.height
+                        let drift = CGFloat(sin(t * 0.15 + Double(index))) * 14
+                        let glyph = Self.glyphs[index % Self.glyphs.count]
+                        let fontSize = 16 + rng.nextUnit() * 28
+                        let alpha = 0.14 + rng.nextUnit() * 0.20
+                        let resolved = context.resolve(
+                            Text(glyph).font(.system(size: fontSize, weight: .semibold))
+                        )
+                        context.opacity = alpha
+                        context.draw(resolved, at: CGPoint(x: baseX, y: baseY + drift), anchor: .center)
+                    }
                 }
             }
+            .foregroundStyle(accent)
         }
-        .foregroundStyle(accent)
         .ignoresSafeArea()
     }
 }

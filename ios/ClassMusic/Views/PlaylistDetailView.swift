@@ -6,6 +6,7 @@ struct PlaylistDetailView: View {
 
     @Environment(PlaybackManager.self) private var playback
     @Environment(QueueStore.self) private var queueStore
+    @Environment(AppSettings.self) private var settings
     @Environment(\.modelContext) private var modelContext
     @State private var isRenaming = false
     @State private var renameText = ""
@@ -25,6 +26,7 @@ struct PlaylistDetailView: View {
                         SongRow(song: song)
                     }
                     .buttonStyle(.plain)
+                    .listRowBackground(settings.theme.surfaceRaised)
                     .swipeActions(edge: .trailing) {
                         Button("Remove", systemImage: "trash", role: .destructive) {
                             remove(item)
@@ -38,6 +40,8 @@ struct PlaylistDetailView: View {
             }
             .onMove(perform: move)
         }
+        .scrollContentBackground(.hidden)
+        .background(settings.theme.surface)
         .navigationTitle(playlist.name)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

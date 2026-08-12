@@ -4,9 +4,14 @@ import SwiftUI
 struct ContentView: View {
     @Environment(PlaybackManager.self) private var playback
     @Environment(QueueStore.self) private var queueStore
+    @Environment(AppSettings.self) private var settings
     @Environment(\.modelContext) private var modelContext
-    @State private var showNowPlaying = false
     @State private var selectedTab = 0
+    /// 0 = collapsed (mini player), 1 = fully expanded (full-screen player).
+    /// Driven continuously by the drag gesture below, not just an on/off
+    /// toggle, so the mini bar can be dragged open with the player tracking
+    /// the gesture the whole way instead of jumping straight to a sheet.
+    @State private var playerExpansion: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -21,13 +26,28 @@ struct ContentView: View {
                     .tabItem { Label("Settings", systemImage: "gearshape") }
                     .tag(2)
             }
+            .tint(settings.theme.accent)
 
             MiniPlayerView()
                 .padding(.bottom, 49)  // clear the tab bar
-                .onTapGesture { showNowPlaying = true }
+                .opacity(1 - playerExpansion)
+                .allowsHitTesting(playerExpansion < 0.05)
+                .simultaneousGesture(playerDragGesture)
+                .onTapGesture { expand() }
         }
-        .sheet(isPresented: $showNowPlaying) {
-            NowPlayingView()
+        .background(settings.theme.surface.ignoresSafeArea())
+        .overlay {
+            if playback.currentSong != nil {
+                GeometryReader { geo in
+                    NowPlayingView(expansion: $playerExpansion)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .background(settings.theme.surface)
+                        .offset(y: (1 - playerExpansion) * geo.size.height)
+                        .opacity(playerExpansion < 0.01 ? 0 : 1)
+                        .allowsHitTesting(playerExpansion > 0.5)
+                        .ignoresSafeArea()
+                }
+            }
         }
         .alert("Couldn't play track", isPresented: loadErrorBinding, presenting: playback.loadError) { _ in
             Button("OK") { playback.clearLoadError() }
@@ -40,6 +60,27 @@ struct ContentView: View {
             await autoplayIfRequested()
             exerciseLibraryIfRequested()
             #endif
+        }
+    }
+
+    private var playerDragGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                let dragUp = -value.translation.height
+                playerExpansion = min(max(dragUp / 300, 0), 1)
+            }
+            .onEnded { value in
+                let predictedUp = -value.predictedEndTranslation.height
+                let shouldOpen = playerExpansion > 0.35 || predictedUp > 220
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                    playerExpansion = shouldOpen ? 1 : 0
+                }
+            }
+    }
+
+    private func expand() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+            playerExpansion = 1
         }
     }
 

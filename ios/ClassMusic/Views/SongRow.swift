@@ -23,12 +23,13 @@ struct SongRow: View {
             }
 
             if song.isFavorite {
-                Spacer()
                 Image(systemName: "heart.fill")
                     .foregroundStyle(.pink)
                     .font(.caption)
             }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 }

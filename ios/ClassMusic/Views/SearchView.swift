@@ -38,6 +38,8 @@ struct SearchView: View {
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(settings.theme.surface)
             .overlay {
                 // Only the empty state depends on hasSearchedCurrentQuery —
                 // without it, this flashed "No results" on every keystroke,
@@ -116,7 +118,9 @@ private struct SearchResultRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 }

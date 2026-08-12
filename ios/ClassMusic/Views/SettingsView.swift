@@ -15,6 +15,8 @@ struct SettingsView: View {
                 presetSection(title: "Dark themes", presets: AppTheme.darkFamily)
                 fontSection
             }
+            .scrollContentBackground(.hidden)
+            .background(settings.theme.surface)
             .navigationTitle("Settings")
         }
     }
@@ -35,6 +37,7 @@ struct SettingsView: View {
             }
             .padding(.vertical, 4)
         }
+        .listRowBackground(settings.theme.surfaceRaised)
     }
 
     // MARK: - Theme
@@ -45,6 +48,7 @@ struct SettingsView: View {
                 themeRow(preset)
             }
         }
+        .listRowBackground(settings.theme.surfaceRaised)
     }
 
     private func themeRow(_ preset: AppTheme) -> some View {
@@ -54,13 +58,15 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 ThemeSwatchView(theme: preset)
                 Text(preset.displayName)
-                    .foregroundStyle(.primary)
-                Spacer()
+                    .foregroundStyle(settings.theme.ink)
+                Spacer(minLength: 0)
                 if settings.theme == preset {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(settings.theme.accent)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -78,17 +84,20 @@ struct SettingsView: View {
                             .font(font.font(size: 20))
                             .frame(width: 40)
                         Text(font.displayName)
-                            .foregroundStyle(.primary)
-                        Spacer()
+                            .foregroundStyle(settings.theme.ink)
+                        Spacer(minLength: 0)
                         if settings.font == font {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(settings.theme.accent)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
+        .listRowBackground(settings.theme.surfaceRaised)
     }
 }
 

@@ -3,58 +3,83 @@ import SwiftUI
 struct NowPlayingView: View {
     @Environment(PlaybackManager.self) private var playback
     @Environment(QueueStore.self) private var queueStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(AppSettings.self) private var settings
+    /// 0...1, shared with the mini player's drag gesture (see ContentView) —
+    /// dragging the handle down here continuously collapses back toward the
+    /// mini player instead of just dismissing outright.
+    @Binding var expansion: CGFloat
     @State private var isScrubbing = false
     @State private var scrubTime: TimeInterval = 0
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                artwork
+        VStack(spacing: 24) {
+            dragHandle
 
-                if let song = playback.currentSong {
-                    VStack(spacing: 4) {
-                        Text(song.title)
-                            .font(.title2.bold())
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                        Text(song.artist)
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal)
+            artwork
 
-                    progressSection
-                    transportControls
-
-                    Button {
-                        song.isFavorite.toggle()
-                    } label: {
-                        Image(systemName: song.isFavorite ? "heart.fill" : "heart")
-                            .foregroundStyle(song.isFavorite ? .pink : .secondary)
-                            .font(.title3)
-                    }
-                } else {
-                    ContentUnavailableView("Nothing Playing", systemImage: "music.note")
+            if let song = playback.currentSong {
+                VStack(spacing: 4) {
+                    Text(song.title)
+                        .font(.title2.bold())
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                    Text(song.artist)
+                        .font(.title3)
+                        .foregroundStyle(settings.theme.inkSecondary)
                 }
+                .padding(.horizontal)
 
-                Spacer()
-            }
-            .padding(.top, 32)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                progressSection
+                transportControls
+
+                Button {
+                    song.isFavorite.toggle()
+                } label: {
+                    Image(systemName: song.isFavorite ? "heart.fill" : "heart")
+                        .foregroundStyle(song.isFavorite ? .pink : settings.theme.inkSecondary)
+                        .font(.title3)
                 }
+            } else {
+                ContentUnavailableView("Nothing Playing", systemImage: "music.note")
             }
+
+            Spacer()
         }
+        .padding(.top, 12)
+        .foregroundStyle(settings.theme.ink)
+    }
+
+    private var dragHandle: some View {
+        Capsule()
+            .fill(settings.theme.inkSecondary.opacity(0.35))
+            .frame(width: 44, height: 5)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .gesture(collapseDragGesture)
+    }
+
+    private var collapseDragGesture: some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                let dragDown = max(value.translation.height, 0)
+                expansion = max(1 - dragDown / 300, 0)
+            }
+            .onEnded { value in
+                let predictedDown = max(value.predictedEndTranslation.height, 0)
+                let shouldClose = expansion < 0.65 || predictedDown > 220
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                    expansion = shouldClose ? 0 : 1
+                }
+            }
     }
 
     private var artwork: some View {
         AsyncImage(url: playback.currentSong?.thumbnailURL) { image in
             image.resizable().aspectRatio(contentMode: .fill)
         } placeholder: {
-            Rectangle().fill(.quaternary)
-                .overlay(Image(systemName: "music.note").font(.largeTitle).foregroundStyle(.secondary))
+            Rectangle().fill(settings.theme.surfaceRaised)
+                .overlay(Image(systemName: "music.note").font(.largeTitle).foregroundStyle(settings.theme.inkSecondary))
         }
         .frame(width: 280, height: 280)
         .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -80,7 +105,7 @@ struct NowPlayingView: View {
                 Text(format(playback.duration))
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(settings.theme.inkSecondary)
         }
         .padding(.horizontal)
     }
@@ -91,7 +116,7 @@ struct NowPlayingView: View {
                 queueStore.toggleShuffle()
             } label: {
                 Image(systemName: "shuffle")
-                    .foregroundStyle(queueStore.isShuffled ? Color.accentColor : .secondary)
+                    .foregroundStyle(queueStore.isShuffled ? settings.theme.accent : settings.theme.inkSecondary)
             }
 
             Button {
@@ -121,11 +146,11 @@ struct NowPlayingView: View {
                 cycleRepeatMode()
             } label: {
                 Image(systemName: queueStore.repeatMode == .one ? "repeat.1" : "repeat")
-                    .foregroundStyle(queueStore.repeatMode == .off ? Color.secondary : Color.accentColor)
+                    .foregroundStyle(queueStore.repeatMode == .off ? settings.theme.inkSecondary : settings.theme.accent)
             }
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.primary)
+        .foregroundStyle(settings.theme.ink)
     }
 
     private func cycleRepeatMode() {

@@ -92,10 +92,10 @@ enum AppTheme: String, CaseIterable, Identifiable {
 /// The curated font pack, ported directly from ClassMate-Notes's
 /// `FontLibrary` — same ids, same names, same order, same iOS-bundled faces
 /// (no bundling/licensing needed). The brand face (Cabinet Grotesk) is
-/// dropped: that's a licensed file bundled into ClassMate-Notes that doesn't
-/// exist in this project.
+/// The brand face (Cabinet Grotesk) is included too — same three bundled
+/// .ttf files as ClassMate-Notes — and is the default, same as there.
 enum AppFont: String, CaseIterable, Identifiable {
-    case system
+    case cabinet, system
     case noteworthy, bradley, marker, chalkboard, snell, savoye
     case rounded, newyork, georgia, menlo
 
@@ -103,6 +103,7 @@ enum AppFont: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
+        case .cabinet: "Cabinet Grotesk"
         case .system: "Default"
         case .noteworthy: "Noteworthy"
         case .bradley: "Bradley Hand"
@@ -119,7 +120,7 @@ enum AppFont: String, CaseIterable, Identifiable {
 
     private var postScriptName: String? {
         switch self {
-        case .system: nil
+        case .cabinet, .system: nil
         case .noteworthy: "Noteworthy-Light"
         case .bradley: "BradleyHandITCTT-Bold"
         case .marker: "MarkerFelt-Thin"
@@ -135,6 +136,7 @@ enum AppFont: String, CaseIterable, Identifiable {
 
     func font(size: CGFloat) -> Font {
         switch self {
+        case .cabinet: return CMFonts.font(size: size)
         case .rounded: return .system(size: size, design: .rounded)
         case .newyork: return .system(size: size, design: .serif)
         case .georgia: return .custom("Georgia", size: size)
@@ -168,6 +170,6 @@ final class AppSettings {
 
     init(defaults: UserDefaults = .standard) {
         theme = AppTheme(rawValue: defaults.string(forKey: Keys.theme) ?? "") ?? .system
-        font = AppFont(rawValue: defaults.string(forKey: Keys.font) ?? "") ?? .system
+        font = AppFont(rawValue: defaults.string(forKey: Keys.font) ?? "") ?? .cabinet
     }
 }

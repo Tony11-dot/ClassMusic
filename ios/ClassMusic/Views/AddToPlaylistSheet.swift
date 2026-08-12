@@ -6,6 +6,7 @@ struct AddToPlaylistSheet: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppSettings.self) private var settings
     @Query(sort: \Playlist.sortOrder) private var playlists: [Playlist]
     @State private var newPlaylistName = ""
 
@@ -21,6 +22,7 @@ struct AddToPlaylistSheet: View {
                         }
                     }
                 }
+                .listRowBackground(settings.theme.surfaceRaised)
                 Section("New Playlist") {
                     HStack {
                         TextField("Playlist name", text: $newPlaylistName)
@@ -32,7 +34,10 @@ struct AddToPlaylistSheet: View {
                         .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
+                .listRowBackground(settings.theme.surfaceRaised)
             }
+            .scrollContentBackground(.hidden)
+            .background(settings.theme.surface)
             .navigationTitle("Add to Playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

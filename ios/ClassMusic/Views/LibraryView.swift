@@ -3,6 +3,7 @@ import SwiftUI
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppSettings.self) private var settings
     @Query(sort: \Playlist.sortOrder) private var playlists: [Playlist]
     @State private var isCreatingPlaylist = false
     @State private var newPlaylistName = ""
@@ -20,6 +21,7 @@ struct LibraryView: View {
                             .foregroundStyle(.blue)
                     }
                 }
+                .listRowBackground(settings.theme.surfaceRaised)
 
                 Section("Playlists") {
                     if playlists.isEmpty {
@@ -37,7 +39,10 @@ struct LibraryView: View {
                     }
                     .onDelete(perform: deletePlaylists)
                 }
+                .listRowBackground(settings.theme.surfaceRaised)
             }
+            .scrollContentBackground(.hidden)
+            .background(settings.theme.surface)
             .navigationTitle("Library")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

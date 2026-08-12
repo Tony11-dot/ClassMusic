@@ -39,10 +39,12 @@ struct MiniPlayerView: View {
                     }
                 }
             }
+            .foregroundStyle(settings.theme.ink)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
             .padding(.horizontal)
+            .contentShape(Rectangle())
         }
     }
 }

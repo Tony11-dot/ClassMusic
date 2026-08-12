@@ -3,6 +3,7 @@ import SwiftUI
 struct QueueView: View {
     @Environment(PlaybackManager.self) private var playback
     @Environment(QueueStore.self) private var queueStore
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         List {
@@ -24,6 +25,7 @@ struct QueueView: View {
                 }
                 .buttonStyle(.borderless)
             }
+            .listRowBackground(settings.theme.surfaceRaised)
 
             if queueStore.songs.isEmpty {
                 ContentUnavailableView("Queue is Empty", systemImage: "text.line.first.and.arrowtriangle.forward", description: Text("Add songs from Search."))
@@ -42,9 +44,10 @@ struct QueueView: View {
                                 .font(.caption)
                         }
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(index == queueStore.currentIndex ? Color.accentColor.opacity(0.12) : nil)
+                .listRowBackground(index == queueStore.currentIndex ? settings.theme.accent.opacity(0.12) : settings.theme.surfaceRaised)
             }
             .onDelete { offsets in
                 for index in offsets.sorted(by: >) {
@@ -55,6 +58,8 @@ struct QueueView: View {
                 queueStore.move(fromOffsets: source, toOffset: destination)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(settings.theme.surface)
         .toolbar { EditButton() }
         .navigationTitle("Queue")
     }
