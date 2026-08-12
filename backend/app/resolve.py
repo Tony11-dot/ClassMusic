@@ -16,8 +16,11 @@ _cache: TTLCache = TTLCache(maxsize=settings.cache_max_size, ttl=settings.cache_
 # Confirmed root cause of the standing 502s: YouTube serves Render's
 # datacenter IP a bot-check wall ("Sign in to confirm you're not a bot") —
 # reproduced with identical yt-dlp options/version from a residential IP,
-# where it resolves fine. No player-client fallback works around this; the
-# documented fix is authenticating requests with real YouTube cookies.
+# where it resolves fine. No anonymous player-client fallback works around
+# this; the fix is authenticating with real YouTube cookies (see
+# _AUTH_YDL_OPTS below for what that actually takes as of 2026 — it's not
+# just "add cookiefile", the auth-capable client also needs a JS challenge
+# solver and settles for a lower-quality combined stream).
 # Render's "Secret Files" feature mounts uploaded files under /etc/secrets/
 # in the running container — add one there named `youtube_cookies.txt`
 # (exported from a real, signed-in-to-YouTube browser session, Netscape
@@ -43,32 +46,47 @@ def _writable_cookies_path() -> str | None:
 
 _COOKIES_PATH = _writable_cookies_path()
 
-_YDL_OPTS = {
-    # AVPlayer has no Opus/WebM support, so the default "bestaudio" pick
-    # (usually itag 251, webm/opus) is silently unplayable on iOS. Force
-    # AAC/m4a (itag 140) — the format Apple's stack actually decodes.
-    "format": "bestaudio[ext=m4a]/bestaudio/best",
+_BASE_YDL_OPTS = {
     "noplaylist": True,
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
-    # "web" is the only client that actually authenticates with a browser
-    # cookie jar — the mobile clients (ios/android/...) use their own
-    # embedded API keys and ignore it. But "web" alone doesn't reliably
-    # offer the itag 140 (m4a) format AVPlayer needs; keep the mobile
-    # clients in the list too so their formats still get merged in. yt-dlp
-    # queries every listed client and unions the format lists, so this
-    # gets both cookie-authenticated bot-wall bypass (web) and m4a
-    # availability (ios/android) in the same request.
+}
+
+# Anonymous, mobile-app-flavored clients — no cookies attached. These use
+# their own embedded API keys rather than a browser session, so yt-dlp
+# refuses to even try them once a cookiefile is configured on the instance
+# ("does not support cookies", silently skipped). Tried first because it's
+# the cheaper, better-quality path: itag 140 is real AAC/m4a *audio-only*,
+# vs. the fallback path's combined video+audio. Whether this succeeds
+# depends entirely on whether YouTube bot-walls the requesting IP for this
+# particular request — Render's datacenter IP frequently does.
+_ANON_YDL_OPTS = {
+    **_BASE_YDL_OPTS,
+    # AVPlayer has no Opus/WebM support, so the default "bestaudio" pick
+    # (usually itag 251, webm/opus) is silently unplayable on iOS. Force
+    # AAC/m4a (itag 140) — the format Apple's stack actually decodes.
+    "format": "bestaudio[ext=m4a]/bestaudio/best",
     "extractor_args": {
-        "youtube": {
-            "player_client": (
-                ["web", "ios", "android_vr", "android", "android_music"] if _COOKIES_PATH
-                else ["ios", "android_vr", "android", "android_music"]
-            ),
-        }
+        "youtube": {"player_client": ["ios", "android_vr", "android", "android_music"]},
     },
-    **({"cookiefile": _COOKIES_PATH} if _COOKIES_PATH else {}),
+}
+
+# Cookie-authenticated fallback for when the anonymous path gets bot-walled.
+# "web" is the only client that honors a browser cookie jar at all. As of
+# 2026 it also needs a JS runtime (Deno, installed in the Dockerfile) to
+# solve YouTube's signature/n-parameter challenge — without one, every
+# non-storyboard format silently disappears. Even then, the pure-audio
+# adaptive formats (itag 140 included) require a GVS PO Token we don't have
+# a provider for, so this only ever gets the legacy progressive format
+# (itag 18: 360p h264 + AAC, combined) — heavier than pure audio, but it's
+# a real, playable stream, which is what actually matters here.
+_AUTH_YDL_OPTS = {
+    **_BASE_YDL_OPTS,
+    "format": "bestaudio[ext=m4a]/bestaudio/best",
+    "extractor_args": {"youtube": {"player_client": ["web"]}},
+    "remote_components": ["ejs:github"],
+    "cookiefile": _COOKIES_PATH,
 }
 
 
@@ -85,13 +103,22 @@ def _validate_video_id(video_id: str) -> None:
         raise InvalidVideoId(video_id)
 
 
+def _run_extract(opts: dict, url: str) -> dict:
+    with YoutubeDL(opts) as ydl:
+        return ydl.extract_info(url, download=False)
+
+
 def _extract(video_id: str) -> dict:
     url = f"https://www.youtube.com/watch?v={video_id}"
     try:
-        with YoutubeDL(_YDL_OPTS) as ydl:
-            info = ydl.extract_info(url, download=False)
-    except Exception as exc:  # yt-dlp raises its own DownloadError hierarchy
-        raise ResolveFailed(str(exc)) from exc
+        info = _run_extract(_ANON_YDL_OPTS, url)
+    except Exception as anon_exc:  # yt-dlp raises its own DownloadError hierarchy
+        if not _COOKIES_PATH:
+            raise ResolveFailed(str(anon_exc)) from anon_exc
+        try:
+            info = _run_extract(_AUTH_YDL_OPTS, url)
+        except Exception as auth_exc:
+            raise ResolveFailed(f"{anon_exc} / auth fallback: {auth_exc}") from auth_exc
 
     stream_url = info.get("url")
     if not stream_url:
