@@ -36,7 +36,11 @@ async def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
 async def health() -> dict:
     # Unauthenticated on purpose: this is what wakes a sleeping free-tier
     # instance (Render) via an uptime ping / the app's cold-start probe.
-    return {"status": "ok"}
+    # "build" is a bump-by-hand marker (not real versioning) purely so a
+    # deploy can be confirmed live from the outside without dashboard/log
+    # access — compare it before/after a push instead of guessing from
+    # elapsed time whether the new image actually rolled out.
+    return {"status": "ok", "build": "resolve-client-fallback-1"}
 
 
 @app.get("/resolve")
