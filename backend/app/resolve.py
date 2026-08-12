@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import time
 
 from cachetools import TTLCache
@@ -23,7 +24,24 @@ _cache: TTLCache = TTLCache(maxsize=settings.cache_max_size, ttl=settings.cache_
 # cookies.txt format) and this picks it up automatically on next deploy.
 # Until that file exists, resolution keeps working exactly as before for
 # whatever isn't currently bot-walled.
-_COOKIES_PATH = os.environ.get("YTDLP_COOKIES_FILE", "/etc/secrets/youtube_cookies.txt")
+_COOKIES_SECRET_PATH = os.environ.get("YTDLP_COOKIES_FILE", "/etc/secrets/youtube_cookies.txt")
+
+
+def _writable_cookies_path() -> str | None:
+    # yt-dlp opens the cookiefile as a MozillaCookieJar and saves it back
+    # after use (Google rotates the session cookies during a request), so
+    # it needs a writable path — Render mounts Secret Files read-only,
+    # which made every resolve fail with "Read-only file system" as soon
+    # as yt-dlp tried to persist the rotated cookies. Copy it into /tmp
+    # (writable) once at import time and use that copy instead.
+    if not os.path.exists(_COOKIES_SECRET_PATH):
+        return None
+    writable_path = "/tmp/youtube_cookies.txt"
+    shutil.copyfile(_COOKIES_SECRET_PATH, writable_path)
+    return writable_path
+
+
+_COOKIES_PATH = _writable_cookies_path()
 
 _YDL_OPTS = {
     # AVPlayer has no Opus/WebM support, so the default "bestaudio" pick
@@ -42,7 +60,7 @@ _YDL_OPTS = {
             "player_client": ["ios", "android_vr", "android", "android_music"],
         }
     },
-    **({"cookiefile": _COOKIES_PATH} if os.path.exists(_COOKIES_PATH) else {}),
+    **({"cookiefile": _COOKIES_PATH} if _COOKIES_PATH else {}),
 }
 
 
