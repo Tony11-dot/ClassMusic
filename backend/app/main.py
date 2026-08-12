@@ -40,7 +40,7 @@ async def health() -> dict:
     # deploy can be confirmed live from the outside without dashboard/log
     # access — compare it before/after a push instead of guessing from
     # elapsed time whether the new image actually rolled out.
-    return {"status": "ok", "build": "resolve-cookies-diag-2"}
+    return {"status": "ok", "build": "resolve-cookies-diag-3"}
 
 
 @app.get("/resolve")
