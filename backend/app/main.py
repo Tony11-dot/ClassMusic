@@ -16,7 +16,13 @@ app = FastAPI(title="ClassMusic Resolve Backend", version="1.0.0")
 # the `ip` param baked into `sparams`) to whichever IP fetched them, so a
 # client fetching the raw URL directly gets rejected — the audio has to be
 # proxied through this same process/IP that resolved it.
-_stream_client = httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30.0, read=60.0))
+# read=120s (not the default 5s, nor the previous 60s): a long file (a
+# 90-minute concert/DJ set) gives googlevideo far more opportunities to
+# briefly stall between chunks than a 3-minute song ever does, and this is
+# the timeout that decides whether a mid-song stall reads as "buffering" or
+# kills the stream outright with a 502 the client shows as "Couldn't play
+# track."
+_stream_client = httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30.0, read=120.0))
 
 
 @app.on_event("shutdown")

@@ -38,10 +38,21 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
     }
 
     private func pushSongs(of playlist: Playlist) {
-        let items = playlist.orderedItems.compactMap(\.song).map { song -> CPListItem in
+        let songs = playlist.orderedItems.compactMap(\.song)
+        let items = songs.enumerated().map { index, song -> CPListItem in
             let item = CPListItem(text: song.title, detailText: song.artist)
             item.handler = { [weak self] _, completion in
-                Task { await PlaybackManager.shared?.play(song: song) }
+                // Route through QueueStore, not PlaybackManager directly —
+                // this is the same "playNow" contract every other list (phone
+                // Search/Library/Favorites) uses. Calling PlaybackManager
+                // alone changed what was audible without moving the queue's
+                // own currentIndex, so the *next* auto-advance/skip resumed
+                // from wherever the queue had been left, not from this
+                // playlist — surfacing on the phone as the queue jumping to
+                // an unrelated track ("skips") right after a CarPlay pick.
+                if let started = QueueStore.shared?.playNow(songs, startingAt: index) {
+                    Task { await PlaybackManager.shared?.play(song: started) }
+                }
                 self?.interfaceController?.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
                 completion()
             }

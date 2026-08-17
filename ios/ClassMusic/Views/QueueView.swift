@@ -31,7 +31,14 @@ struct QueueView: View {
                 ContentUnavailableView("Queue is Empty", systemImage: "text.line.first.and.arrowtriangle.forward", description: Text("Add songs from Search."))
             }
 
-            ForEach(Array(queueStore.songs.enumerated()), id: \.element.id) { index, song in
+            // Keyed by position, not `song.id`: the same song can legitimately
+            // appear twice in the queue (added from two different places), and
+            // `Song.id` (the YouTube video ID) is shared by both rows in that
+            // case. Keying a List/ForEach by a non-unique id makes SwiftUI's
+            // diffing misattribute swipe-to-delete/drag-to-reorder between the
+            // duplicate rows — the queue looking "out of order" or "skipping"
+            // after a delete/move was this, not the underlying data.
+            ForEach(Array(queueStore.songs.enumerated()), id: \.offset) { index, song in
                 Button {
                     guard let jumped = queueStore.jump(to: index) else { return }
                     Task { await playback.play(song: jumped) }

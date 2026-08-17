@@ -22,13 +22,28 @@ struct ResolveClient {
     private let apiKey: String
 
     init(
-        session: URLSession = .shared,
+        session: URLSession = ResolveClient.makeSession(),
         baseURL: URL = Secrets.backendBaseURL,
         apiKey: String = Secrets.backendAPIKey
     ) {
         self.session = session
         self.baseURL = baseURL
         self.apiKey = apiKey
+    }
+
+    /// `.shared`'s default 60s request timeout races the backend's
+    /// cookie-authenticated fallback path (bot-walled videos, ~20-25s
+    /// server-side on its own) plus yt-dlp's extraction time, which grows
+    /// with the video — a long concert/DJ set can blow past 60s even though
+    /// the backend would have answered fine. This is a plain request/response
+    /// timeout (distinct from AVPlayer's own duration-scaled timeout in
+    /// PlaybackManager, which only starts once resolve() has already
+    /// succeeded), so it needs its own generous ceiling.
+    private static func makeSession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 180
+        config.timeoutIntervalForResource = 180
+        return URLSession(configuration: config)
     }
 
     /// Hits /health first. Free-tier hosts (Render) spin down when idle, so
