@@ -21,35 +21,27 @@ struct LaunchView: View {
 
     var body: some View {
         if let scene = LaunchScene.animation(surface: theme.surface, accent: theme.accent) {
-            // Previously sized the scene with `.frame(width:)` +
-            // `.aspectRatio(.fit)` and then *also* applied `.scaleEffect` +
-            // `.clipped()` on top, meaning to shrink the rendered content
-            // further inside the same (unscaled) layout box. That extra
-            // layer fought with `LaunchSceneView`'s own UIKit
-            // `contentMode = .scaleAspectFit` and clipped the wordmark
-            // instead of just shrinking it. The fix: compute the exact
-            // target box size directly (a fixed fraction of the shorter
-            // screen dimension, height derived from the composition's real
-            // aspect ratio) and hand that straight to `LaunchSceneView` with
-            // nothing else layered on — `scaleAspectFit` mathematically
-            // cannot crop content, it only letterboxes within whatever
-            // bounds it's given, so no `.clipped()` is needed. `.position`
-            // (not ZStack's default alignment, which centers within the
-            // safe-area layout guide and can drift next to the
-            // ignoresSafeArea background) keeps it dead-center.
-            GeometryReader { geo in
-                let boxWidth = min(geo.size.width, geo.size.height) * 0.46
-                let boxHeight = boxWidth / LaunchScene.aspectRatio
-                ZStack {
-                    theme.surface.ignoresSafeArea()
-                    AmbientBackground(accent: theme.accent)
-                        .opacity(decorIn ? 1 : 0)
-                    LaunchSceneView(animation: scene, onFinished: finishOnce)
-                        .frame(width: boxWidth, height: boxHeight)
-                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                }
+            // Two earlier attempts at sizing this (a `.scaleEffect`+`.clipped`
+            // stack, then a manual `GeometryReader`-sized box) both missed
+            // the actual cause: `LaunchSceneView` never told UIKit it was
+            // allowed to shrink below the composition's native 1280×720,
+            // so no SwiftUI frame we gave it was ever honored — it rendered
+            // at intrinsic size regardless. Now that `LaunchSceneView` sets
+            // compression resistance low and reports its own fitted size via
+            // `sizeThatFits`, this can go back to matching ClassMate's own
+            // reference sizing exactly (`Center(child: Lottie(fit: contain))`
+            // full-width): plain aspect-fit at the available width, centered
+            // by the ZStack's default alignment — no extra box, scale, or
+            // clip layered on top.
+            ZStack {
+                theme.surface.ignoresSafeArea()
+                AmbientBackground(accent: theme.accent)
+                    .opacity(decorIn ? 1 : 0)
+                    .ignoresSafeArea()
+                LaunchSceneView(animation: scene, onFinished: finishOnce)
+                    .aspectRatio(LaunchScene.aspectRatio, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
             }
-            .ignoresSafeArea()
             .task {
                 withAnimation(.easeOut(duration: 1.1)) { decorIn = true }
                 // A safety net: if playback never reports completion

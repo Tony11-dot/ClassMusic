@@ -40,6 +40,26 @@ enum LaunchScene {
         return CGFloat(width / height)
     }
 
+    /// The largest box of `aspectRatio` that fits inside `proposal` — an aspect
+    /// FIT, so the scene is never wider or taller than the room it was offered.
+    /// A zero or non-finite dimension means "unspecified": the other one decides.
+    static func fitted(aspectRatio: CGFloat, into proposal: CGSize) -> CGSize {
+        guard aspectRatio > 0 else { return .zero }
+        let offeredWidth = proposal.width.isFinite && proposal.width > 0 ? proposal.width : 0
+        let offeredHeight = proposal.height.isFinite && proposal.height > 0 ? proposal.height : 0
+        if offeredWidth <= 0, offeredHeight <= 0 { return .zero }
+        if offeredWidth <= 0 {
+            return CGSize(width: offeredHeight * aspectRatio, height: offeredHeight)
+        }
+        if offeredHeight <= 0 {
+            return CGSize(width: offeredWidth, height: offeredWidth / aspectRatio)
+        }
+        if offeredWidth / offeredHeight > aspectRatio {
+            return CGSize(width: offeredHeight * aspectRatio, height: offeredHeight)
+        }
+        return CGSize(width: offeredWidth, height: offeredWidth / aspectRatio)
+    }
+
     /// How long the scene runs — used to schedule the hand-off even if the
     /// completion callback is missed (a backgrounded launch drops it).
     static var duration: TimeInterval {
