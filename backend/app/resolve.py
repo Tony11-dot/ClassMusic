@@ -28,6 +28,9 @@ _cache: TTLCache = TTLCache(maxsize=settings.cache_max_size, ttl=settings.cache_
 # Until that file exists, resolution keeps working exactly as before for
 # whatever isn't currently bot-walled.
 _COOKIES_SECRET_PATH = os.environ.get("YTDLP_COOKIES_FILE", "/etc/secrets/youtube_cookies.txt")
+# Railway has no equivalent of Render's mounted Secret Files, so it takes the
+# cookie file as a plain environment variable's raw text content instead.
+_COOKIES_CONTENT = os.environ.get("YTDLP_COOKIES_CONTENT")
 
 
 def _writable_cookies_path() -> str | None:
@@ -37,11 +40,15 @@ def _writable_cookies_path() -> str | None:
     # which made every resolve fail with "Read-only file system" as soon
     # as yt-dlp tried to persist the rotated cookies. Copy it into /tmp
     # (writable) once at import time and use that copy instead.
-    if not os.path.exists(_COOKIES_SECRET_PATH):
-        return None
     writable_path = "/tmp/youtube_cookies.txt"
-    shutil.copyfile(_COOKIES_SECRET_PATH, writable_path)
-    return writable_path
+    if os.path.exists(_COOKIES_SECRET_PATH):
+        shutil.copyfile(_COOKIES_SECRET_PATH, writable_path)
+        return writable_path
+    if _COOKIES_CONTENT:
+        with open(writable_path, "w") as f:
+            f.write(_COOKIES_CONTENT)
+        return writable_path
+    return None
 
 
 _COOKIES_PATH = _writable_cookies_path()

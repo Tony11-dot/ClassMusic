@@ -108,6 +108,28 @@ final class QueueStore {
         refresh()
     }
 
+    /// Replaces the queue outright with `songs`, starting at `index` — this
+    /// is what tapping a track in any list (Search results, a playlist,
+    /// Favorites) should do, matching Spotify/Apple Music: that whole list
+    /// becomes the play context, so Next/Previous/Repeat afterward walk
+    /// through it instead of whatever unrelated queue existed before.
+    func playNow(_ songs: [Song], startingAt index: Int) -> Song? {
+        guard songs.indices.contains(index) else { return nil }
+        for item in queue.items {
+            context.delete(item)
+        }
+        queue.items.removeAll()
+        for (position, song) in songs.enumerated() {
+            let item = QueueItem(song: song, position: position)
+            context.insert(item)
+            queue.items.append(item)
+        }
+        queue.currentIndex = index
+        queue.isShuffled = false
+        refresh()
+        return songs[index]
+    }
+
     /// Jump directly to a queue row (tapped in QueueView).
     func jump(to index: Int) -> Song? {
         guard songs.indices.contains(index) else { return nil }

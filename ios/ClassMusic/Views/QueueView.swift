@@ -47,7 +47,8 @@ struct QueueView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(index == queueStore.currentIndex ? settings.theme.accent.opacity(0.12) : settings.theme.surfaceRaised)
+                .listRowBackground(index == queueStore.currentIndex ? settings.theme.accent.opacity(0.12) : Color.clear)
+                .listRowSeparator(.hidden)
             }
             .onDelete { offsets in
                 for index in offsets.sorted(by: >) {

@@ -88,18 +88,22 @@ struct BrandMarkView: View {
     }
 }
 
-/// The shared "[mark] ClassMusic" lockup shown at the top of every main
-/// screen (Search, Library, Settings) — one consistent brand header instead
-/// of each screen having its own plain navigation title.
+/// The shared brand lockup shown at the top of every main screen (Search,
+/// Library, Settings) — the designed logo-with-wordmark artwork itself
+/// (`BrandLogoWithText`), not a hand-rebuilt mark+text approximation of it.
 struct BrandHeaderBar: View {
     @Environment(AppSettings.self) private var settings
 
     var body: some View {
-        HStack(spacing: 8) {
-            BrandMarkView(size: 26, background: settings.theme.accent)
-            Text("ClassMusic")
-                .font(settings.font.font(size: 18, weight: .bold))
-                .foregroundStyle(settings.theme.ink)
-        }
+        // `.template` treats the artwork as a plain alpha mask (it's
+        // already a single flat color) and retints it with the theme
+        // accent — the same color the launch animation's Lottie scene gets
+        // recoloured to, so the two read as the same brand color.
+        Image("BrandLogoWithText")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(settings.theme.accent)
+            .frame(height: 44)
     }
 }

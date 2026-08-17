@@ -2,16 +2,11 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
-    @Environment(PlaybackManager.self) private var playback
-    @Environment(QueueStore.self) private var queueStore
     @Environment(AppSettings.self) private var settings
     @Environment(\.modelContext) private var modelContext
+    @Environment(QueueStore.self) private var queueStore
+    @Environment(PlaybackManager.self) private var playback
     @State private var selectedTab = 0
-    /// 0 = collapsed (mini player), 1 = fully expanded (full-screen player).
-    /// Driven continuously by the drag gesture below, not just an on/off
-    /// toggle, so the mini bar can be dragged open with the player tracking
-    /// the gesture the whole way instead of jumping straight to a sheet.
-    @State private var playerExpansion: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -30,36 +25,14 @@ struct ContentView: View {
             .onAppear { applyTabBarFont() }
             .onChange(of: settings.font) { _, _ in applyTabBarFont() }
 
-            MiniPlayerView()
-                .padding(.bottom, 49 + 10)  // clear the tab bar, plus a floating gap above it
-                .opacity(1 - playerExpansion)
-                .allowsHitTesting(playerExpansion < 0.05)
-                .simultaneousGesture(playerDragGesture)
-                .onTapGesture { expand() }
+            // Isolated into its own view so the drag gesture's continuous
+            // state updates only re-evaluate this small subtree, not the
+            // whole TabView (three tabs, one a searchable List) on every
+            // frame of the drag — that full-tree re-evaluation was the
+            // source of the expand/collapse lag.
+            PlayerOverlay()
         }
         .background(settings.theme.surface.ignoresSafeArea())
-        .overlay {
-            if playback.currentSong != nil {
-                GeometryReader { geo in
-                    NowPlayingView(expansion: $playerExpansion)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .background(settings.theme.surface)
-                        .offset(y: (1 - playerExpansion) * geo.size.height)
-                        // No opacity toggle here on purpose: a hard 0/1 cutoff
-                        // at a fixed threshold flickered whenever ordinary
-                        // finger jitter crossed back and forth over it right
-                        // at the end of a drag. The offset alone already
-                        // parks the view fully off-screen at expansion 0.
-                        // Must stay hit-testable for as long as the view is
-                        // even partly visible — gating this on a >0.5
-                        // threshold cut hit-testing out from under an
-                        // in-progress drag the moment it crossed halfway,
-                        // which is exactly what broke "pull down to collapse".
-                        .allowsHitTesting(playerExpansion > 0.01)
-                        .ignoresSafeArea(edges: .bottom)
-                }
-            }
-        }
         .alert("Couldn't play track", isPresented: loadErrorBinding, presenting: playback.loadError) { _ in
             Button("OK") { playback.clearLoadError() }
         } message: { message in
@@ -67,28 +40,13 @@ struct ContentView: View {
         }
         .task {
             wireQueueToPlayback()
+            Task { await playback.prewarm() }
             #if DEBUG
             await autoplayIfRequested()
             exerciseLibraryIfRequested()
-            expandPlayerIfRequested()
             if ProcessInfo.processInfo.environment["UITEST_SETTINGS_TAB"] == "1" { selectedTab = 2 }
             #endif
         }
-    }
-
-    private var playerDragGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                let dragUp = -value.translation.height
-                playerExpansion = min(max(dragUp / 300, 0), 1)
-            }
-            .onEnded { value in
-                let predictedUp = -value.predictedEndTranslation.height
-                let shouldOpen = playerExpansion > 0.35 || predictedUp > 220
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    playerExpansion = shouldOpen ? 1 : 0
-                }
-            }
     }
 
     /// `UITabBarItem` renders through UIKit and ignores SwiftUI's `.font`
@@ -101,12 +59,6 @@ struct ContentView: View {
         let appearance = UITabBarItem.appearance()
         appearance.setTitleTextAttributes([.font: font], for: .normal)
         appearance.setTitleTextAttributes([.font: font], for: .selected)
-    }
-
-    private func expand() {
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-            playerExpansion = 1
-        }
     }
 
     private var loadErrorBinding: Binding<Bool> {
@@ -171,13 +123,83 @@ struct ContentView: View {
 
         queueStore.enqueue(song)
     }
+    #endif
+}
 
+/// Owns the mini/full player's continuous expansion state so dragging it
+/// only re-evaluates this small view, not the tab bar and its three tabs.
+/// Also draws *after* (so, visually on top of) the full player in the
+/// parent ZStack — the full player is a full-screen view that slides down
+/// and out via `offset`, and without the mini bar layered on top of it,
+/// the sliver of the full player still on-screen mid-drag (its drag handle,
+/// being the first thing in its own layout) showed through right on top of
+/// the mini bar/tab bar instead of being covered by it.
+private struct PlayerOverlay: View {
+    @Environment(PlaybackManager.self) private var playback
+    @Environment(AppSettings.self) private var settings
+    /// Binary, not a continuously-tracked 0...1 value. The previous version
+    /// updated a fractional `expansion` on every touch-move during the
+    /// drag, which meant every finger movement re-rendered the full (heavy)
+    /// NowPlayingView subtree at a new offset/opacity — on a real device
+    /// that per-frame work was visibly janky ("stuck image, shifting"),
+    /// not just a gesture-conflict bug. Deciding open/closed once — on a
+    /// tap, or by reading the drag only at release — and letting a single
+    /// `withAnimation` spring interpolate the change is what actually
+    /// reads as smooth: one state change, system-driven, instead of dozens
+    /// of hand-computed intermediate frames.
+    @State private var isExpanded = false
+
+    var body: some View {
+        Group {
+            if playback.currentSong != nil {
+                GeometryReader { geo in
+                    NowPlayingView(isExpanded: $isExpanded)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .background(settings.theme.surface)
+                        .offset(y: isExpanded ? 0 : geo.size.height)
+                        .opacity(isExpanded ? 1 : 0)
+                        .allowsHitTesting(isExpanded)
+                        .ignoresSafeArea(edges: .bottom)
+                }
+            }
+
+            MiniPlayerView()
+                .padding(.bottom, 49 + 10)  // clear the tab bar, plus a floating gap above it
+                .opacity(isExpanded ? 0 : 1)
+                .allowsHitTesting(!isExpanded)
+                .simultaneousGesture(openGesture)
+                .onTapGesture { setExpanded(true) }
+        }
+        #if DEBUG
+        .task { expandIfRequested() }
+        #endif
+    }
+
+    /// Only reads the gesture at release — no live tracking, see above.
+    private var openGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onEnded { value in
+                let dragUp = -value.translation.height
+                let predictedUp = -value.predictedEndTranslation.height
+                if dragUp > 40 || predictedUp > 120 {
+                    setExpanded(true)
+                }
+            }
+    }
+
+    private func setExpanded(_ expanded: Bool) {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+            isExpanded = expanded
+        }
+    }
+
+    #if DEBUG
     /// Driven by `SIMCTL_CHILD_UITEST_EXPAND_PLAYER=1` — jumps straight to
     /// the full player since `devicectl`/`simctl` have no way to simulate
     /// the drag-to-expand gesture itself.
-    private func expandPlayerIfRequested() {
+    private func expandIfRequested() {
         guard ProcessInfo.processInfo.environment["UITEST_EXPAND_PLAYER"] == "1" else { return }
-        playerExpansion = 1
+        isExpanded = true
     }
     #endif
 }

@@ -60,7 +60,11 @@ struct ResolveClient {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            throw NetworkError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+            // FastAPI error bodies are {"detail": "..."} — surface that
+            // human-readable string instead of the raw JSON blob, since this
+            // ends up straight in a user-facing alert.
+            let detail = (try? JSONDecoder().decode(ErrorDetail.self, from: data))?.detail
+            throw NetworkError.http(status: http.statusCode, body: detail ?? String(data: data, encoding: .utf8) ?? "")
         }
 
         let metadata: ResolveMetadata
@@ -84,6 +88,10 @@ struct ResolveClient {
             streamHeaders: headers
         )
     }
+}
+
+private struct ErrorDetail: Decodable {
+    let detail: String
 }
 
 private struct ResolveMetadata: Decodable {

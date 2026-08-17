@@ -21,12 +21,20 @@ struct PlaylistDetailView: View {
             ForEach(items) { item in
                 if let song = item.song {
                     Button {
-                        Task { await playback.play(song: song) }
+                        // See SearchView's equivalent comment — playing the
+                        // whole playlist as context (not just this one song)
+                        // is what makes Next/Previous/Repeat walk through
+                        // the playlist afterward.
+                        let songs = items.compactMap(\.song)
+                        guard let index = songs.firstIndex(where: { $0.id == song.id }),
+                              let toPlay = queueStore.playNow(songs, startingAt: index) else { return }
+                        Task { await playback.play(song: toPlay) }
                     } label: {
                         SongRow(song: song)
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(settings.theme.surfaceRaised)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                     .swipeActions(edge: .trailing) {
                         Button("Remove", systemImage: "trash", role: .destructive) {
                             remove(item)

@@ -20,6 +20,50 @@ struct LaunchView: View {
     private let markSize: CGFloat = 96
 
     var body: some View {
+        if let scene = LaunchScene.animation(surface: theme.surface, accent: theme.accent) {
+            // Previously sized the scene with `.frame(width:)` +
+            // `.aspectRatio(.fit)` and then *also* applied `.scaleEffect` +
+            // `.clipped()` on top, meaning to shrink the rendered content
+            // further inside the same (unscaled) layout box. That extra
+            // layer fought with `LaunchSceneView`'s own UIKit
+            // `contentMode = .scaleAspectFit` and clipped the wordmark
+            // instead of just shrinking it. The fix: compute the exact
+            // target box size directly (a fixed fraction of the shorter
+            // screen dimension, height derived from the composition's real
+            // aspect ratio) and hand that straight to `LaunchSceneView` with
+            // nothing else layered on — `scaleAspectFit` mathematically
+            // cannot crop content, it only letterboxes within whatever
+            // bounds it's given, so no `.clipped()` is needed. `.position`
+            // (not ZStack's default alignment, which centers within the
+            // safe-area layout guide and can drift next to the
+            // ignoresSafeArea background) keeps it dead-center.
+            GeometryReader { geo in
+                let boxWidth = min(geo.size.width, geo.size.height) * 0.46
+                let boxHeight = boxWidth / LaunchScene.aspectRatio
+                ZStack {
+                    theme.surface.ignoresSafeArea()
+                    AmbientBackground(accent: theme.accent)
+                        .opacity(decorIn ? 1 : 0)
+                    LaunchSceneView(animation: scene, onFinished: finishOnce)
+                        .frame(width: boxWidth, height: boxHeight)
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
+            }
+            .ignoresSafeArea()
+            .task {
+                withAnimation(.easeOut(duration: 1.1)) { decorIn = true }
+                // A safety net: if playback never reports completion
+                // (launched into the background, animations disabled), hand
+                // off anyway.
+                try? await Task.sleep(for: .seconds(LaunchScene.duration + 1.2))
+                finishOnce()
+            }
+        } else {
+            nativeBody
+        }
+    }
+
+    private var nativeBody: some View {
         ZStack {
             theme.surface.ignoresSafeArea()
             AmbientBackground(accent: theme.accent)

@@ -10,6 +10,7 @@ final class Song {
     var duration: TimeInterval?
     var dateAdded: Date
     var isFavorite: Bool
+    var lastPlayedAt: Date?
 
     init(
         id: String,
@@ -18,7 +19,8 @@ final class Song {
         thumbnailURL: URL? = nil,
         duration: TimeInterval? = nil,
         dateAdded: Date = .now,
-        isFavorite: Bool = false
+        isFavorite: Bool = false,
+        lastPlayedAt: Date? = nil
     ) {
         self.id = id
         self.title = title
@@ -27,5 +29,6 @@ final class Song {
         self.duration = duration
         self.dateAdded = dateAdded
         self.isFavorite = isFavorite
+        self.lastPlayedAt = lastPlayedAt
     }
 }

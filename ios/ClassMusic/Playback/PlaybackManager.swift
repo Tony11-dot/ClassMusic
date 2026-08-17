@@ -146,6 +146,16 @@ final class PlaybackManager {
         }
     }
 
+    /// Fire-and-forget ping to wake a sleeping free-tier backend instance as
+    /// early as possible (app launch) instead of only on the first play tap
+    /// — Render's free tier cold-starts in 15-30s, so a tap that triggers
+    /// that cold start itself just sits there looking broken. Called from
+    /// ContentView's launch `.task`, not awaited there, so it overlaps with
+    /// the rest of startup instead of delaying it.
+    func prewarm() async {
+        _ = await resolveClient.wake()
+    }
+
     @MainActor
     func play(song: Song) async {
         loadError = nil
@@ -157,6 +167,7 @@ final class PlaybackManager {
         do {
             let resolved = try await resolveClient.resolve(videoId: song.id)
             logger.info("resolved \(song.id): \(resolved.streamURL.absoluteString.prefix(80))...")
+            song.lastPlayedAt = .now
             if song.duration == nil, let resolvedDuration = resolved.duration {
                 song.duration = resolvedDuration
                 duration = resolvedDuration
@@ -164,9 +175,36 @@ final class PlaybackManager {
 
             let asset = AVURLAsset(url: resolved.streamURL, options: [
                 "AVURLAssetHTTPHeaderFieldsKey": resolved.streamHeaders,
+                // Precise duration/timing forces AVFoundation to index the
+                // full sample table before reporting readyToPlay — for a
+                // 30-60min combined-format file (see the duration-scaled
+                // timeout below) that's a lot of extra scanning for
+                // precision this app never uses (no frame-accurate
+                // scrubbing). We already have the real duration from the
+                // resolve API, so approximate timing costs nothing here and
+                // meaningfully cuts startup latency on long tracks.
+                AVURLAssetPreferPreciseDurationAndTimingKey: false,
             ])
             let item = AVPlayerItem(asset: asset)
-            attachObservers(to: item)
+            // Default buffering heuristics scale their "how much to
+            // buffer before playing" estimate with the asset's total
+            // size/duration, which is exactly backwards for a 90MB+ long
+            // track on a slow connection — it makes the wait *longer* right
+            // when speed matters most. A small explicit forward-buffer
+            // target plus disabling the adaptive wait makes playback start
+            // as soon as a few seconds are actually buffered.
+            item.preferredForwardBufferDuration = 5
+            player.automaticallyWaitsToMinimizeStalling = false
+            // Long-form content (full concerts, DJ sets) frequently only has
+            // a heavy combined video+audio stream available (YouTube
+            // withholds the small audio-only format for some videos even
+            // from the authenticated fallback) — a 90-minute show can mean
+            // a 90MB+ file just to reach readyToPlay, which a flat 45s
+            // budget doesn't leave enough room for on a slow connection.
+            // Scales gently: a typical 3-4min song barely moves off the
+            // 45s floor, a 30min video gets roughly a minute more.
+            let timeoutSeconds = 45.0 + min(60.0, duration / 30.0)
+            attachObservers(to: item, timeoutSeconds: timeoutSeconds)
             player.replaceCurrentItem(with: item)
             player.play()
             isPlaying = true
@@ -183,7 +221,7 @@ final class PlaybackManager {
     /// instead of leaving the UI stuck on a spinner forever: end-of-item,
     /// mid-playback failures, initial load failures (KVO on `.status`), and
     /// a timeout in case the item never resolves either way.
-    private func attachObservers(to item: AVPlayerItem) {
+    private func attachObservers(to item: AVPlayerItem, timeoutSeconds: TimeInterval) {
         if let itemEndObserver {
             NotificationCenter.default.removeObserver(itemEndObserver)
         }
@@ -233,7 +271,14 @@ final class PlaybackManager {
 
         readyTimeoutTask?.cancel()
         readyTimeoutTask = Task { [weak self, weak item] in
-            try? await Task.sleep(for: .seconds(20))
+            // 20s was too tight: the cookie-authenticated fallback path
+            // (bot-walled videos) alone takes ~20-25s server-side just to
+            // resolve, before AVPlayer even starts buffering the proxied
+            // stream — this was killing genuinely-in-progress loads and
+            // surfacing them as "Stream timed out" even though they would
+            // have started playing seconds later. See timeoutSeconds above
+            // for why this isn't a flat number.
+            try? await Task.sleep(for: .seconds(timeoutSeconds))
             guard !Task.isCancelled, let self, let item, item.status != .readyToPlay else { return }
             self.handleLoadFailure("Stream timed out — check your connection and try again")
         }

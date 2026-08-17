@@ -4,89 +4,115 @@ struct NowPlayingView: View {
     @Environment(PlaybackManager.self) private var playback
     @Environment(QueueStore.self) private var queueStore
     @Environment(AppSettings.self) private var settings
-    /// 0...1, shared with the mini player's drag gesture (see ContentView) —
-    /// dragging the handle down here continuously collapses back toward the
-    /// mini player instead of just dismissing outright.
-    @Binding var expansion: CGFloat
+    @Binding var isExpanded: Bool
     @State private var isScrubbing = false
     @State private var scrubTime: TimeInterval = 0
+    @State private var showAddToPlaylist = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            // The handle, artwork, and title/artist block all share the
-            // collapse gesture — not just the small handle — since that's
-            // where people actually try to pull down from. The slider and
-            // transport buttons keep their own gestures untouched below.
+        ZStack {
+            // A single drag-catcher behind everything, covering the full
+            // view (including blank space below the controls) rather than
+            // only the handle/artwork/title block — buttons and the slider
+            // still claim their own touches first. It only *reads* the
+            // gesture at release (see collapseGesture) instead of tracking
+            // it live frame-by-frame, which was the real source of the
+            // "stuck image, shifting" stutter reported on-device: every
+            // touch-move was re-rendering this whole (heavy) view at a new
+            // offset/opacity, dozens of times a second. Deciding once and
+            // letting a single spring animate it is what actually reads as
+            // smooth.
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(collapseGesture)
+
             VStack(spacing: 24) {
-                dragHandle
-                artwork
-                if let song = playback.currentSong {
-                    VStack(spacing: 4) {
-                        Text(song.title)
-                            .font(settings.font.font(size: 22, weight: .bold))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                        Text(song.artist)
-                            .font(settings.font.font(size: 20))
-                            .foregroundStyle(settings.theme.inkSecondary)
+                VStack(spacing: 24) {
+                    dragHandle
+                    artwork
+                    if let song = playback.currentSong {
+                        VStack(spacing: 4) {
+                            Text(song.title)
+                                .font(settings.font.font(size: 22, weight: .bold))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                            Text(song.artist)
+                                .font(settings.font.font(size: 20))
+                                .foregroundStyle(settings.theme.inkSecondary)
+                        }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                 }
-            }
-            .contentShape(Rectangle())
-            .gesture(collapseDragGesture)
 
-            if let song = playback.currentSong {
-                progressSection
-                transportControls
+                if let song = playback.currentSong {
+                    progressSection
+                    transportControls
 
-                Button {
-                    song.isFavorite.toggle()
-                } label: {
-                    Image(systemName: song.isFavorite ? "heart.fill" : "heart")
-                        .foregroundStyle(song.isFavorite ? .pink : settings.theme.inkSecondary)
-                        .font(.title3)
+                    HStack(spacing: 28) {
+                        Button {
+                            song.isFavorite.toggle()
+                        } label: {
+                            Image(systemName: song.isFavorite ? "heart.fill" : "heart")
+                                .foregroundStyle(song.isFavorite ? .pink : settings.theme.inkSecondary)
+                                .font(.title3)
+                        }
+
+                        Button {
+                            showAddToPlaylist = true
+                        } label: {
+                            Image(systemName: "plus.circle")
+                                .foregroundStyle(settings.theme.inkSecondary)
+                                .font(.title3)
+                        }
+                    }
+                } else {
+                    ContentUnavailableView("Nothing Playing", systemImage: "music.note")
                 }
-            } else {
-                ContentUnavailableView("Nothing Playing", systemImage: "music.note")
-            }
 
-            Spacer()
+                Spacer()
+            }
+            .padding(.top, 12)
+            .allowsHitTesting(true)
         }
-        .padding(.top, 12)
         .foregroundStyle(settings.theme.ink)
+        .sheet(isPresented: $showAddToPlaylist) {
+            if let song = playback.currentSong {
+                AddToPlaylistSheet(song: song)
+            }
+        }
     }
 
-    // No gesture attached here directly — it's nested inside the outer
-    // VStack, which already carries `collapseDragGesture`. Attaching the
-    // same gesture to both a view and its ancestor created two competing
-    // recognizers that occasionally swapped mid-drag, producing the
-    // stutter/glitch during pull-down.
+    // A plain tap here is a guaranteed-reliable, gesture-conflict-free way
+    // to collapse — no drag tracking involved at all, just a button. The
+    // drag below still works from anywhere in the view, but this is the
+    // fallback that can't glitch.
     private var dragHandle: some View {
         Capsule()
             .fill(settings.theme.inkSecondary.opacity(0.35))
             .frame(width: 44, height: 5)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture { collapse() }
     }
 
-    private var collapseDragGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
-            .onChanged { value in
-                let dragDown = max(value.translation.height, 0)
-                expansion = max(1 - dragDown / 250, 0)
-            }
+    /// Reads the gesture only at release, not on every touch-move — see the
+    /// comment on the drag-catcher above.
+    private var collapseGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
             .onEnded { value in
                 let dragDown = max(value.translation.height, 0)
                 let predictedDown = max(value.predictedEndTranslation.height, 0)
-                // Any deliberate pull (not just a long one) or a flick
-                // commits to closing — a short, hesitant drag was
-                // snapping right back open before.
-                let shouldClose = dragDown > 70 || predictedDown > 140 || expansion < 0.75
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    expansion = shouldClose ? 0 : 1
+                if dragDown > 40 || predictedDown > 120 {
+                    collapse()
                 }
             }
+    }
+
+    private func collapse() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+            isExpanded = false
+        }
     }
 
     private var artwork: some View {

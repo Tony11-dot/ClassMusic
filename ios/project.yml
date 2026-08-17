@@ -14,6 +14,11 @@ configFiles:
   Debug: Config/Secrets.xcconfig
   Release: Config/Secrets.xcconfig
 
+packages:
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios.git
+    from: 4.5.0
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -21,7 +26,7 @@ settings:
     DEVELOPMENT_TEAM: NNFD7CKGLG
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "9"
     APP_GROUP_ID: group.com.classmate.music
 
 targets:
@@ -34,6 +39,7 @@ targets:
     dependencies:
       - target: ClassMusicWidgetExtension
         embed: true
+      - package: Lottie
     entitlements:
       path: ClassMusic/ClassMusic.entitlements
       properties:

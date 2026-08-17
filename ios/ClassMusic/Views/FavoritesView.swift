@@ -15,12 +15,15 @@ struct FavoritesView: View {
             }
             ForEach(favorites) { song in
                 Button {
-                    Task { await playback.play(song: song) }
+                    guard let index = favorites.firstIndex(where: { $0.id == song.id }),
+                          let toPlay = queueStore.playNow(favorites, startingAt: index) else { return }
+                    Task { await playback.play(song: toPlay) }
                 } label: {
                     SongRow(song: song)
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(settings.theme.surfaceRaised)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
                 .swipeActions {
                     Button("Unfavorite", systemImage: "heart.slash") {
                         song.isFavorite = false
