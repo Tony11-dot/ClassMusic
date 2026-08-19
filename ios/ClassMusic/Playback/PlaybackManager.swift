@@ -41,6 +41,22 @@ final class PlaybackManager {
     private nonisolated(unsafe) var itemStatusObservation: NSKeyValueObservation?
     private var readyTimeoutTask: Task<Void, Never>?
 
+    /// Bumped on every user/queue-initiated `play(song:)` call (never on an
+    /// internal retry), so an in-flight retry can tell whether it's still
+    /// for the track actually wanted — without this, a retry sleeping after
+    /// a transient failure could clobber a song the user has since skipped
+    /// to when it finally fires.
+    private var loadGeneration = 0
+    /// Resolve failures and AVPlayer load failures (bad stream URL blip,
+    /// backend cold start, a dropped connection mid-handshake) are usually
+    /// transient — the same request often succeeds seconds later. Spotify/
+    /// YouTube-style "just plays" behavior means eating a couple of those
+    /// silently before ever bothering the user with an alert.
+    private static let maxLoadRetries = 2
+    private var activeSong: Song?
+    private var activeRetryCount = 0
+    private var activeGeneration = 0
+
     init(resolveClient: ResolveClient = ResolveClient()) {
         self.resolveClient = resolveClient
         configureAudioSession()
@@ -157,7 +173,12 @@ final class PlaybackManager {
     }
 
     @MainActor
-    func play(song: Song) async {
+    func play(song: Song, retryCount: Int = 0, generation: Int? = nil, resumeAt: TimeInterval? = nil) async {
+        let generation = generation ?? {
+            loadGeneration += 1
+            return loadGeneration
+        }()
+
         loadError = nil
         isBuffering = true
         currentSong = song
@@ -204,24 +225,54 @@ final class PlaybackManager {
             // Scales gently: a typical 3-4min song barely moves off the
             // 45s floor, a 30min video gets roughly a minute more.
             let timeoutSeconds = 45.0 + min(60.0, duration / 30.0)
-            attachObservers(to: item, timeoutSeconds: timeoutSeconds)
+            attachObservers(to: item, song: song, retryCount: retryCount, generation: generation, timeoutSeconds: timeoutSeconds)
             player.replaceCurrentItem(with: item)
             player.play()
             isPlaying = true
-            nowPlaying.update(song: song, duration: duration, elapsed: 0, rate: 1)
+            if let resumeAt, resumeAt > 1 {
+                seek(to: resumeAt)
+            }
+            nowPlaying.update(song: song, duration: duration, elapsed: resumeAt ?? 0, rate: 1)
             logger.info("playing \(song.id), player.rate=\(self.player.rate)")
         } catch {
-            logger.error("resolve/play failed for \(song.id): \(error.localizedDescription)")
-            loadError = error.localizedDescription
-            isBuffering = false
+            logger.warning("resolve failed for \(song.id) (attempt \(retryCount + 1)): \(error.localizedDescription)")
+            await retryOrFail(song: song, retryCount: retryCount, generation: generation, resumeAt: resumeAt, message: error.localizedDescription)
         }
+    }
+
+    /// Shared by both failure paths above (resolve throwing, and AVPlayer's
+    /// own load failures via `handleLoadFailure`): retry the same song a
+    /// couple times with a short backoff before giving up and surfacing
+    /// `loadError`. Bails out quietly — no alert — if a newer `play(song:)`
+    /// call has superseded this one while the retry was waiting. `resumeAt`
+    /// carries the playhead position through a mid-playback failure (a long
+    /// concert dying at minute 45 should retry into minute 45, not restart
+    /// from zero).
+    @MainActor
+    private func retryOrFail(song: Song, retryCount: Int, generation: Int, resumeAt: TimeInterval?, message: String) async {
+        guard generation == loadGeneration else { return }
+        guard retryCount < Self.maxLoadRetries else {
+            loadError = message
+            isBuffering = false
+            isPlaying = false
+            return
+        }
+        try? await Task.sleep(for: .seconds(1.5))
+        guard generation == loadGeneration else { return }
+        await play(song: song, retryCount: retryCount + 1, generation: generation, resumeAt: resumeAt)
     }
 
     /// Wires up everything needed so a broken stream surfaces as `loadError`
     /// instead of leaving the UI stuck on a spinner forever: end-of-item,
     /// mid-playback failures, initial load failures (KVO on `.status`), and
-    /// a timeout in case the item never resolves either way.
-    private func attachObservers(to item: AVPlayerItem, timeoutSeconds: TimeInterval) {
+    /// a timeout in case the item never resolves either way. `song`/
+    /// `retryCount`/`generation` are stashed so `handleLoadFailure` (invoked
+    /// from these observers, not from `play` itself) knows what to retry.
+    private func attachObservers(to item: AVPlayerItem, song: Song, retryCount: Int, generation: Int, timeoutSeconds: TimeInterval) {
+        activeSong = song
+        activeRetryCount = retryCount
+        activeGeneration = generation
+
         if let itemEndObserver {
             NotificationCenter.default.removeObserver(itemEndObserver)
         }
@@ -285,10 +336,22 @@ final class PlaybackManager {
     }
 
     private func handleLoadFailure(_ message: String) {
-        loadError = message
-        isBuffering = false
-        isPlaying = false
         player.pause()
+        isPlaying = false
+        guard let song = activeSong else {
+            loadError = message
+            isBuffering = false
+            return
+        }
+        // currentTime > 1 means this item had actually started playing
+        // (a mid-stream stall/drop), so the retry should resume there
+        // instead of restarting a long track from zero.
+        let resumeAt = currentTime > 1 ? currentTime : nil
+        let retryCount = activeRetryCount
+        let generation = activeGeneration
+        Task { [weak self] in
+            await self?.retryOrFail(song: song, retryCount: retryCount, generation: generation, resumeAt: resumeAt, message: message)
+        }
     }
 
     func pause() {

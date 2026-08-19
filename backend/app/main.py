@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import httpx
@@ -46,7 +47,7 @@ async def health() -> dict:
     # deploy can be confirmed live from the outside without dashboard/log
     # access — compare it before/after a push instead of guessing from
     # elapsed time whether the new image actually rolled out.
-    return {"status": "ok", "build": "resolve-cookies-3"}
+    return {"status": "ok", "build": "resolve-cookies-4"}
 
 
 @app.get("/resolve")
@@ -87,17 +88,24 @@ async def stream(
         req = _stream_client.build_request("GET", stream_url, headers=upstream_headers)
         return await _stream_client.send(req, stream=True)
 
+    # A stale cached URL (or one issued to a since-recycled egress IP) reads
+    # as a rejection here. Also seen in practice: YouTube's CDN transiently
+    # 403ing the cookie-authenticated ("web" client) fallback format for a
+    # stretch of minutes-to-hours even on a *freshly* resolved URL — a single
+    # retry wasn't enough to ride that out, so this tries a few times with a
+    # short forced-fresh-resolve backoff before finally giving up as a 502.
     upstream = await open_upstream(resolved["stream_url"])
-    if upstream.status_code in (403, 404):
-        # A stale cached URL (or one issued to a since-recycled egress IP)
-        # reads as a rejection here — force a fresh resolve and retry once.
+    attempt = 0
+    while upstream.status_code in (403, 404) and attempt < 3:
+        attempt += 1
         await upstream.aclose()
+        await asyncio.sleep(0.5 * attempt)
         resolved = await resolve_video(id, force=True)
         upstream = await open_upstream(resolved["stream_url"])
 
     if upstream.status_code >= 400:
         await upstream.aclose()
-        logger.warning("upstream stream fetch failed for %s: %s", id, upstream.status_code)
+        logger.warning("upstream stream fetch failed for %s: %s (after %d retries)", id, upstream.status_code, attempt)
         raise HTTPException(status_code=502, detail=f"upstream returned {upstream.status_code}")
 
     headers = {key: upstream.headers[key] for key in _PASSTHROUGH_HEADERS if key in upstream.headers}
